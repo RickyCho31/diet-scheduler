@@ -8,6 +8,7 @@
   :root { --bg: #121614; --card: #1b201d; --ink: #e8ece9; --muted: #9aa39e; --line: #2b322e; --chip: #24302a; --shadow: none; }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
 body { padding-bottom: calc(64px + var(--safe-b)); }
 #topbar { position: sticky; top: 0; z-index: 5; display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background: var(--brand); color: var(--brand-ink); }
