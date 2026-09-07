@@ -1,5 +1,5 @@
-/* Diet Scheduler service worker: 앱 셸은 캐시 우선, 데이터(식단/DB)는 네트워크 우선 + 캐시 폴백 */
-const VERSION = 'ds-v1';
+/* Diet Scheduler service worker: 네트워크 우선 + 캐시 폴백 (오프라인 대비). 배포 시 VERSION 올리면 옛 캐시 삭제 */
+const VERSION = 'ds-v2';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/store.js', './js/nutrition.js', './js/plans.js', './js/menu.js', './js/foods.js', './js/hangul.js',
@@ -26,10 +26,11 @@ self.addEventListener('fetch', (e) => {
       return res;
     }).catch(() => caches.match(e.request)));
   } else {
-    e.respondWith(caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
+    // 앱 셸도 네트워크 우선: 배포 직후 바로 최신 반영, 오프라인이면 캐시
+    e.respondWith(fetch(e.request).then((res) => {
       const copy = res.clone();
       caches.open(VERSION).then((c) => c.put(e.request, copy));
       return res;
-    })));
+    }).catch(() => caches.match(e.request)));
   }
 });

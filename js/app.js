@@ -18,7 +18,11 @@ async function boot() {
   store.load();
   handleWeightParam();
   render();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
+  }
   loadMenu().then(() => { ui.menuLoaded = true; render(); });
   loadFoods().then(() => { ui.foodsLoaded = true; render(); }).catch(() => toast('음식 DB를 불러오지 못했습니다'));
   document.addEventListener('visibilitychange', () => { if (!document.hidden && ui.date !== store.today()) { ui.date = store.today(); render(); } });
