@@ -78,12 +78,15 @@ export const BREAKFAST = [
   { id: 'b-oats', title: '오버나이트 오트밀', tags: ['전날준비'], prep: '전날 밤: 오트밀+두유+치아씨드를 통에 섞어 냉장. 아침에 블루베리 올려 바로.',
     ing: [['오트밀', 40], ['무가당두유', 190, { fixed: true }], ['치아씨드', 6], ['블루베리', 50]],
     steps: ['밀폐용기에 오트밀·치아씨드를 넣고 두유를 붓는다', '냉장고에서 하룻밤(6시간 이상)', '아침에 블루베리(냉동 가능)를 올린다', '단백질이 부족한 날은 프로틴 ½스쿱을 섞어도 됨'] },
-  { id: 'b-greek', title: '그릭요거트 오트볼', tags: ['5분'], prep: '재료만 있으면 아침에 바로. 바나나는 전날 사두기.',
+  { id: 'b-greek', title: '그릭요거트 오트볼', tags: ['5분'], dairy: true, prep: '재료만 있으면 아침에 바로. 바나나는 전날 사두기.',
     ing: [['그릭요거트', 150], ['오트밀', 20], ['바나나', 60], ['아몬드', 10]],
     steps: ['그릇에 그릭요거트를 담는다', '오트밀·바나나 슬라이스·아몬드를 올린다'] },
   { id: 'b-egg', title: '삶은계란 + 두유 + 토마토', tags: ['전날준비'], prep: '전날 계란 2~3개 삶아 냉장. 아침엔 까기만.',
     ing: [['삶은계란', 100], ['두유190', 190], ['방울토마토', 100]],
     steps: ['계란은 끓는 물 10분 → 찬물', '두유 1팩, 방울토마토 한 줌과 함께'] },
+  { id: 'b-tofu', title: '연두부 계란 볼', tags: ['5분', '전날준비'], prep: '전날 계란 삶아두기. 연두부는 팩 그대로.',
+    ing: [['연두부', 150], ['삶은계란', 50, { label: '계란 1개' }], ['방울토마토', 80], ['김', 2], ['간장', 5], ['참기름', 2]],
+    steps: ['연두부 위에 삶은 계란 반 갈라 올리기', '김가루·간장·참기름 살짝', '방울토마토 곁들임'] },
 ];
 
 export const LUNCHBOX = [
@@ -105,9 +108,15 @@ export const LUNCHBOX = [
   { id: 'l-fried-rice', title: '계란 야채 볶음밥(저유)', tags: ['10분'], prep: '냉동야채·계란·밥만. 전날 만들어 도시락통에 넣어도 됨.',
     ing: [['현미밥', 120], ['삶은계란', 100, { label: '계란 2개' }], ['냉동야채', 100], ['올리브오일', 5], ['김', 2]],
     steps: ['팬에 기름 1작은술, 냉동야채 볶기', '계란 2개 풀어 스크램블', '밥 넣고 소금 약간, 김가루'] },
-  { id: 'l-pumpkin', title: '단호박 그릭요거트 볼', tags: ['가벼움', '전날준비'], prep: '단호박 쪄서 냉장. 저녁 예산이 적은 날.',
+  { id: 'l-pumpkin', title: '단호박 그릭요거트 볼', tags: ['가벼움', '전날준비'], dairy: true, prep: '단호박 쪄서 냉장. 저녁 예산이 적은 날.',
     ing: [['단호박', 200], ['그릭요거트', 100], ['견과믹스', 10]],
     steps: ['단호박은 씨 빼고 전자레인지 6~7분', '그릭요거트·견과 올리기'] },
+  { id: 'l-pumpkin-egg', title: '단호박 계란 견과 볼', tags: ['가벼움', '전날준비'], prep: '단호박 찌고 계란 삶아 냉장. 저녁 예산이 적은 날(비유제품).',
+    ing: [['단호박', 200], ['삶은계란', 100, { label: '계란 2개' }], ['견과믹스', 10]],
+    steps: ['단호박은 씨 빼고 전자레인지 6~7분', '삶은 계란 2개·견과 올리기, 소금 약간'] },
+  { id: 'l-salmon', title: '훈제연어 두부 샐러드', tags: ['5분', '가벼움'], prep: '훈제연어·두부·채소만. 저녁 가볍게.',
+    ing: [['훈제연어', 80], ['두부', 150], ['양상추', 80], ['방울토마토', 80], ['올리브오일', 4]],
+    steps: ['두부는 물기 빼고 큼직하게', '채소 위에 연어·두부, 올리브오일·후추'] },
   { id: 'l-sausage', title: '닭가슴살 소시지 병아리콩 볼', tags: ['5분', '전날준비'], prep: '병아리콩 통조림, 소시지, 채소만.',
     ing: [['닭가슴살소시지', 100], ['병아리콩', 100], ['방울토마토', 80], ['오이', 60], ['올리브오일', 4]],
     steps: ['소시지는 전자레인지 40초', '병아리콩은 물기 빼고 채소와 섞기', '올리브오일·후추'] },
@@ -120,7 +129,8 @@ export const RETORT = [
   { id: 'r-sausage', name: '닭가슴살 소시지 1개(70g)', ing: [['닭가슴살소시지', 70]], role: 'protein' },
   { id: 'r-egg', name: '삶은계란 2개', ing: [['삶은계란', 100]], role: 'protein' },
   { id: 'r-soymilk', name: '두유 1팩(190ml)', ing: [['두유190', 190]], role: 'protein' },
-  { id: 'r-greek', name: '그릭요거트 1컵(100g)', ing: [['그릭요거트', 100]], role: 'protein' },
+  { id: 'r-greek', name: '그릭요거트 1컵(100g)', ing: [['그릭요거트', 100]], role: 'protein', dairy: true },
+  { id: 'r-tuna', name: '참치캔 1개(85g, 기름 뺀)', ing: [['참치캔', 85]], role: 'protein' },
   { id: 'r-rice', name: '즉석 현미밥 ½개(105g)', ing: [['즉석현미밥', 105]], role: 'carb' },
   { id: 'r-sweet', name: '찐 고구마 1개(150g)', ing: [['고구마', 150]], role: 'carb' },
   { id: 'r-nurungji', name: '컵누룽지 1개(40g)', ing: [['누룽지', 40]], role: 'carb' },
@@ -136,11 +146,16 @@ export function retortItem(r) {
   return { id: r.id, name: r.name, role: r.role, ...t, grams: parts.reduce((a, p) => a + p.grams, 0) };
 }
 
-const RETORT_KIND = { 'r-yeondubu': 'tofu', 'r-chicken': 'chicken', 'r-sausage': 'chicken', 'r-egg': 'egg', 'r-soymilk': 'soy', 'r-greek': 'dairy', 'r-bar': 'bar' };
+const RETORT_KIND = { 'r-yeondubu': 'tofu', 'r-chicken': 'chicken', 'r-sausage': 'chicken', 'r-egg': 'egg', 'r-soymilk': 'soy', 'r-greek': 'dairy', 'r-bar': 'bar', 'r-tuna': 'fish' };
+
+/** 프로필(유제품 제외 등)에 맞는 목록 */
+export function breakfastsFor(profile) { return BREAKFAST.filter((r) => !(profile && profile.noDairy && r.dairy)); }
+export function lunchboxesFor(profile) { return LUNCHBOX.filter((r) => !(profile && profile.noDairy && r.dairy)); }
+export function retortsFor(profile) { return RETORT.filter((r) => !(profile && profile.noDairy && r.dairy)); }
 
 /** 예산에 맞는 레토르트 조합 제안 (단백질 1~2종 + 탄수 0~1 + 채소). 날짜로 조금씩 바뀜 */
-export function retortCombo(budget, iso = '') {
-  const items = RETORT.map(retortItem);
+export function retortCombo(budget, iso = '', profile = null) {
+  const items = retortsFor(profile).map(retortItem);
   const seed = [...iso].reduce((a, c) => a + c.charCodeAt(0), 0);
   const prot = items.filter((i) => i.role === 'protein' && i.id !== 'r-bar').sort((a, b) => b.prot / b.kcal - a.prot / a.kcal);
   // 첫 단백질: 밀도 상위 3개 중 날짜 기반 선택
@@ -163,9 +178,10 @@ export function retortCombo(budget, iso = '') {
 }
 
 /** 도시락 선택: 최근 3일과 겹치지 않는 후보 중 예산에 가까운 상위 3개에서 날짜 기반 선택 */
-export function pickLunchbox(iso, meal, recentIds = [], budgetKcal = 500) {
-  let pool = LUNCHBOX.filter((r) => !recentIds.includes(r.id));
-  if (pool.length < 3) pool = LUNCHBOX;
+export function pickLunchbox(iso, meal, recentIds = [], budgetKcal = 500, profile = null) {
+  const all = lunchboxesFor(profile);
+  let pool = all.filter((r) => !recentIds.includes(r.id));
+  if (pool.length < 3) pool = all;
   const ranked = pool.map((r) => ({ r, d: Math.abs(baseKcal(r) - budgetKcal) })).sort((a, b) => a.d - b.d).slice(0, 3);
   const seed = [...iso].reduce((a, c) => a + c.charCodeAt(0), 0) + (meal === 'd' ? 7 : 0);
   return ranked[seed % ranked.length].r;

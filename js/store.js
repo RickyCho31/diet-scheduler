@@ -6,9 +6,10 @@ export const MEAL_NAME = { b: '아침', l: '점심', s: '간식', d: '저녁' };
 
 const DEFAULT_PROFILE = {
   name: '', sex: 'M', age: 40, heightCm: 175, activity: 1.375,
-  goalKcal: null,          // null이면 TDEE - deficit
-  deficit: 500,
-  proteinPerKg: 1.4,
+  goalKcal: null,          // null이면 자동(감량 속도 기반)
+  pace: 0.6,               // 목표 감량 속도 kg/주 (0.4~1.0). 1kg 지방 ≈ 7700kcal
+  proteinPerKg: null,      // null이면 나이 기반 권장값
+  noDairy: false,          // 유제품(그릭요거트·우유) 추천 제외
   split: { b: 0.22, l: 0.34, s: 0.10, d: 0.34 },
   shake: { scoopG: 30, kcalPerScoop: 120, protPerScoop: 24, maxScoops: 2 },
   nuts: { kcalPer10g: 60, protPer10g: 2 },

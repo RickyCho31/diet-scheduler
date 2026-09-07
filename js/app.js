@@ -1,7 +1,7 @@
 // Diet Scheduler — UI
 import { store, MEALS, MEAL_NAME, addDays, localDate } from './store.js';
-import { targets, mealBudgets, decideCafeteria, snackPlan, sumItems, mealTotal, dayTotal, PORTIONS, PORTION_LABEL, NUTRS, NUTR_LABEL, NUTR_UNIT, pct } from './nutrition.js';
-import { BREAKFAST, LUNCHBOX, RETORT, buildRecipe, scaleFor, retortItem, retortCombo, pickLunchbox, findRecipe } from './plans.js';
+import { targets, recommended, weightTrend, mealBudgets, decideCafeteria, snackPlan, sumItems, mealTotal, dayTotal, PORTIONS, PORTION_LABEL, NUTRS, NUTR_LABEL, NUTR_UNIT, pct } from './nutrition.js';
+import { BREAKFAST, LUNCHBOX, RETORT, breakfastsFor, lunchboxesFor, retortsFor, buildRecipe, scaleFor, retortItem, retortCombo, pickLunchbox, findRecipe } from './plans.js';
 import { loadFoods, foodsReady, searchFoods, nutrientsFor, matchMenuItem, F } from './foods.js';
 import { loadMenu, menuFor, cafeteriaItems, menuData, weekStarting } from './menu.js';
 
@@ -68,9 +68,12 @@ function recentLunchboxIds(iso, n = 3) {
 
 function plannedRecipe(iso, meal, budgetKcal) {
   const day = store.day(iso);
+  const p = store.state.profile;
   let rec = findRecipe(day.plan[meal]);
+  if (rec && p.noDairy && rec.dairy) rec = null;   // 유제품 제외 설정이면 다시 고름
   if (!rec) {
-    rec = meal === 'b' ? BREAKFAST[[...iso].reduce((a, c) => a + c.charCodeAt(0), 0) % BREAKFAST.length] : pickLunchbox(iso, meal, recentLunchboxIds(iso), budgetKcal);
+    const bl = breakfastsFor(p);
+    rec = meal === 'b' ? bl[[...iso].reduce((a, c) => a + c.charCodeAt(0), 0) % bl.length] : pickLunchbox(iso, meal, recentLunchboxIds(iso), budgetKcal, p);
     day.plan[meal] = rec.id; store.save();   // 한 번 정해진 계획은 고정 (내일 화면과 오늘 화면이 같도록)
   }
   return buildRecipe(rec, scaleFor(rec, budgetKcal));
@@ -151,7 +154,7 @@ function recommendBlock(iso, m, c) {
     banner = `<div class="banner ${d.verdict}">${text}<div class="small muted" style="margin-top:4px">${items.map((it) => esc(it.name.replace(/\*.*$/, ''))).join(' · ')}</div></div>`;
   }
   const rec = plannedRecipe(iso, m, b.kcal);
-  const combo = retortCombo(b, iso + m);
+  const combo = retortCombo(b, iso + m, c.p);
   return `${banner}
     <div class="banner info"><b>권고 도시락: ${esc(rec.title)}</b> <span class="muted">(${rec.total.kcal} kcal · 단백질 ${r1(rec.total.prot)}g · 배율 ${rec.scale}x)</span><br><span class="small">${rec.parts.map((p) => `${esc(p.label)} ${p.grams}${p.unit}`).join(' · ')}</span></div>
     <div class="banner info"><b>귀찮은 날 (레토르트)</b>: <span class="small">${combo.map((i) => esc(i.name)).join(' + ')} = ${combo.reduce((a, i) => a + i.kcal, 0)} kcal · 단백질 ${r1(combo.reduce((a, i) => a + i.prot, 0))}g</span></div>
@@ -223,7 +226,7 @@ function panelHTML(iso, m, c) {
   } else if (d.mode === 'retort') {
     const t = sumItems(d.items);
     html = `<h3>레토르트/간편식 — 먹은 것 체크</h3>
-      <ul class="list">${RETORT.map((r) => { const it = retortItem(r); const n = d.items.filter((x) => x.rid === r.id).length; return `<li><span class="name">${esc(it.name)}<span class="sub">${it.kcal} kcal · 단백질 ${r1(it.prot)}g</span></span><span class="stepper"><button data-action="retort-dec" data-rid="${r.id}">−</button><span>${n}</span><button data-action="retort-inc" data-rid="${r.id}">+</button></span></li>`; }).join('')}</ul>
+      <ul class="list">${retortsFor(c.p).map((r) => { const it = retortItem(r); const n = d.items.filter((x) => x.rid === r.id).length; return `<li><span class="name">${esc(it.name)}<span class="sub">${it.kcal} kcal · 단백질 ${r1(it.prot)}g</span></span><span class="stepper"><button data-action="retort-dec" data-rid="${r.id}">−</button><span>${n}</span><button data-action="retort-inc" data-rid="${r.id}">+</button></span></li>`; }).join('')}</ul>
       <div class="row between" style="margin-top:8px"><b>합계 ${t.kcal} kcal · 단백질 ${r1(t.prot)}g</b><span class="chip ${t.kcal > b.kcal * 1.1 ? 'warn' : 'ok'}">예산 ${b.kcal}</span></div>
       <div class="btns"><button class="btn sm ghost" data-action="open" data-mode="out" data-meal="${m}">+ 검색해서 추가</button></div>`;
   } else if (d.mode === 'snack') {
@@ -296,7 +299,7 @@ function viewTomorrow() {
       <div class="small" style="margin-top:4px">📝 ${esc(rec.prep)}</div>
       <div class="check"><input type="checkbox" data-action="prep" data-meal="${m}" data-date="${iso}" ${day.prepared[m] ? 'checked' : ''}><span>재료 준비 완료</span></div>
       <div class="btns"><button class="btn sm" data-action="recipe" data-id="${rec.id}">레시피</button><button class="btn sm ghost" data-action="rotate-date" data-meal="${m}" data-date="${iso}">다른 도시락</button></div>
-      <div class="small muted" style="margin-top:8px">레토르트 대안: ${retortCombo(b, iso + m).map((i) => esc(i.name)).join(' + ')}</div></div>`;
+      <div class="small muted" style="margin-top:8px">레토르트 대안: ${retortCombo(b, iso + m, c.p).map((i) => esc(i.name)).join(' + ')}</div></div>`;
   }
   h += `<div class="card muted small">예산은 내일 기록이 없는 상태의 기본 배분입니다. 실제 예산은 내일 아침 섭취량에 따라 자동 조정됩니다.</div>`;
   return h;
@@ -340,7 +343,18 @@ function viewStats() {
     const x = (i) => pad + (i / 29) * (W - pad * 2), y = (kg) => H - pad - ((kg - min) / (max - min)) * (H - pad * 2);
     const path = wpts.map((p, k) => `${k ? 'L' : 'M'}${x(p.i).toFixed(1)},${y(p.kg).toFixed(1)}`).join(' ');
     const first = wpts[0], last = wpts[wpts.length - 1];
-    h += `<div class="card"><div class="row between"><h2 class="tight">체중 30일</h2><span class="chip ${last.kg <= first.kg ? 'ok' : 'warn'}">${(last.kg - first.kg > 0 ? '+' : '') + (last.kg - first.kg).toFixed(1)} kg</span></div>
+    const tr = weightTrend(store.state.weights, store.today(), 14);
+    const rec = recommended(store.state.profile);
+    let paceMsg = '';
+    if (tr) {
+      const lose = -tr.perWeek;
+      if (lose >= rec.paceDanger) paceMsg = `<div class="banner lunchbox small">최근 2주 감량 속도 주 ${lose.toFixed(2)} kg. 주 1.5 kg 이상이 이어지면 담석 위험이 커집니다. 목표 칼로리를 200~300 올리거나 속도를 낮추세요.</div>`;
+      else if (lose > rec.paceMax) paceMsg = `<div class="banner partial small">최근 2주 주 ${lose.toFixed(2)} kg. 안전 범위(주 1.0 kg) 위쪽입니다. 끼니를 거르지 말고 단백질을 채우세요.</div>`;
+      else if (lose >= rec.paceMin) paceMsg = `<div class="banner ok small">최근 2주 주 ${lose.toFixed(2)} kg 감량. 안전하고 충분한 속도입니다 (목표 주 ${tg.pace} kg).</div>`;
+      else if (lose >= 0) paceMsg = `<div class="banner partial small">최근 2주 주 ${lose.toFixed(2)} kg. 목표(주 ${tg.pace} kg)보다 느립니다. 4주 이상 이어지면 설정에서 속도를 한 단계 올리거나 산책을 늘리세요.</div>`;
+      else paceMsg = `<div class="banner partial small">최근 2주 체중이 주 ${(-lose).toFixed(2)} kg 늘었습니다. 기록 누락이나 외식이 잦지 않았는지 확인해 보세요.</div>`;
+    }
+    h += `<div class="card"><div class="row between"><h2 class="tight">체중 30일</h2><span class="chip ${last.kg <= first.kg ? 'ok' : 'warn'}">${(last.kg - first.kg > 0 ? '+' : '') + (last.kg - first.kg).toFixed(1)} kg</span></div>${paceMsg}
       <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="체중 추이"><line x1="${pad}" x2="${W - pad}" y1="${H - pad}" y2="${H - pad}" stroke="var(--line)"/><path d="${path}" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linejoin="round"/>
       ${wpts.map((p) => `<circle cx="${x(p.i).toFixed(1)}" cy="${y(p.kg).toFixed(1)}" r="4" fill="var(--brand)" stroke="var(--card)" stroke-width="2"><title>${p.iso} ${p.kg}kg</title></circle>`).join('')}
       <text x="${x(first.i)}" y="${y(first.kg) - 8}" font-size="11" fill="var(--muted)" text-anchor="middle">${first.kg}</text><text x="${x(last.i)}" y="${y(last.kg) - 8}" font-size="11" fill="var(--ink)" text-anchor="middle" font-weight="600">${last.kg}</text></svg></div>`;
@@ -380,6 +394,7 @@ function viewSettings() {
   const p = store.state.profile;
   const w = store.latestWeight();
   const tg = targets(p, w ? w.kg : null);
+  const rec = recommended(p);
   const opt = (v, cur, label) => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${label}</option>`;
   return `<h1>설정</h1>
   <div class="card"><h2>프로필</h2>
@@ -389,11 +404,19 @@ function viewSettings() {
       <label class="f">나이<input type="number" id="p-age" value="${p.age}"></label>
       <label class="f">키 (cm)<input type="number" id="p-height" value="${p.heightCm}"></label>
       <label class="f">활동량<select id="p-activity">${opt(1.2, p.activity, '거의 안 움직임 1.2')}${opt(1.375, p.activity, '가벼운 활동 1.375')}${opt(1.55, p.activity, '보통 1.55')}${opt(1.725, p.activity, '활발 1.725')}</select></label>
-      <label class="f">단백질 g/kg<input type="number" step="0.1" id="p-ppk" value="${p.proteinPerKg}"></label>
-      <label class="f">하루 적자 (kcal)<input type="number" step="50" id="p-deficit" value="${p.deficit}"></label>
+      <label class="f">목표 감량 속도<select id="p-pace">${[0.4, 0.5, 0.6, 0.75, 0.9, 1.0].map((v) => opt(v, p.pace, `주 ${v} kg (월 약 ${Math.round(v * 4.3 * 10) / 10} kg)`)).join('')}</select></label>
+      <label class="f">단백질 g/kg (비우면 권장값 ${rec.proteinPerKg})<input type="number" step="0.1" id="p-ppk" value="${p.proteinPerKg ?? ''}" placeholder="자동 ${rec.proteinPerKg}"></label>
       <label class="f">목표 칼로리 직접 지정 (비우면 자동)<input type="number" step="10" id="p-goal" value="${p.goalKcal ?? ''}" placeholder="자동"></label>
+      <label class="check" style="grid-column:1/-1"><input type="checkbox" id="p-nodairy" ${p.noDairy ? 'checked' : ''}><span>유제품(그릭요거트·우유 등) 추천에서 제외</span></label>
     </div>
-    <div class="banner info small">현재 계산: 기초대사 ${tg.bmr} · 유지 ${tg.tdee} · <b>목표 ${tg.kcal} kcal</b> · 단백질 ${tg.prot}g ${w ? `(체중 ${w.kg}kg 기준)` : '(체중 미입력: 70kg 가정)'}<br>마운자로 복용 중엔 식욕이 줄어 기본 하한(남 1300 / 여 1100)을 두었습니다. 의료진 지시가 있으면 목표 칼로리를 직접 지정하세요.</div>
+    <div class="banner ${tg.belowFloor ? 'lunchbox' : tg.floored ? 'partial' : 'ok'} small">
+      <b>계산 결과</b> ${w ? `(체중 ${w.kg}kg 기준)` : '(체중 미입력: 70kg 가정)'}<br>
+      기초대사 ${tg.bmr} · 유지 ${tg.tdee} kcal → <b>목표 ${tg.kcal} kcal/일</b> (적자 ${tg.deficit}) · 예상 감량 주 ${tg.expectedPace} kg<br>
+      단백질 ${tg.prot} g (${tg.ppk} g/kg) · 지방 ${tg.fat} g 이하 · 식이섬유 25 g<br>
+      ${tg.floored ? `⚠ 원하는 속도로는 하한(${tg.floorKcal} kcal) 아래로 내려가서 하한을 적용했습니다. 감량 속도는 활동량(산책)으로 보태세요.` : ''}
+      ${tg.belowFloor ? `⚠ 직접 지정한 목표가 권장 하한(${tg.floorKcal} kcal)보다 낮습니다. 의료진과 상의한 값이 아니라면 올리세요.` : ''}
+    </div>
+    <details><summary>${p.sex === 'F' ? '여성' : '남성'} ${p.age}세 · 마운자로 병용 시 권장 원칙</summary><ul class="steps small">${rec.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul><div class="muted small">일반적인 임상 권고를 요약한 것이며 개인 처방을 대체하지 않습니다.</div></details>
   </div>
   <div class="card"><h2>끼니 배분 (비율)</h2><div class="grid2">
     ${MEALS.map((m) => `<label class="f">${MEAL_NAME[m]}<input type="number" step="0.01" min="0" max="1" id="split-${m}" value="${p.split[m]}"></label>`).join('')}</div>
@@ -478,8 +501,8 @@ $('#view').addEventListener('click', (e) => {
 
 function rotatePlan(iso, m) {
   const day = store.day(iso);
-  const list = m === 'b' ? BREAKFAST : LUNCHBOX;
   const c = ctx(iso);
+  const list = m === 'b' ? breakfastsFor(c.p) : lunchboxesFor(c.p);
   const cur = plannedRecipe(iso, m, c.budgets[m].kcal).id;
   const i = list.findIndex((r) => r.id === cur);
   day.plan[m] = list[(i + 1) % list.length].id;
@@ -489,7 +512,8 @@ function rotatePlan(iso, m) {
 function saveProfile() {
   const p = store.state.profile;
   p.name = $('#p-name').value.trim(); p.sex = $('#p-sex').value; p.age = +$('#p-age').value || p.age; p.heightCm = +$('#p-height').value || p.heightCm;
-  p.activity = +$('#p-activity').value; p.proteinPerKg = +$('#p-ppk').value || 1.4; p.deficit = +$('#p-deficit').value || 0;
+  p.activity = +$('#p-activity').value; p.pace = +$('#p-pace').value || 0.6; p.noDairy = $('#p-nodairy').checked;
+  const ppk = parseFloat($('#p-ppk').value); p.proteinPerKg = ppk > 0 ? ppk : null;
   const g = parseFloat($('#p-goal').value); p.goalKcal = g > 0 ? g : null;
   let sum = 0; for (const m of MEALS) { p.split[m] = Math.max(0, +$(`#split-${m}`).value || 0); sum += p.split[m]; }
   if (sum > 0) for (const m of MEALS) p.split[m] = Math.round((p.split[m] / sum) * 100) / 100;
