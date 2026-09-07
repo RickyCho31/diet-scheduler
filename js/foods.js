@@ -110,7 +110,8 @@ export function matchMenuItem(raw) {
       const flat = e.n.replace(/_/g, '');
       if (e.n === target || flat === target) { consider(row, 0); continue; }
       if (target.length < 3) continue;
-      if (classifyMenuItem(row[F.name]).kind !== cls.kind) continue;   // 부분 일치는 같은 분류끼리만 (김치볶음밥 ≠ 김치볶음)
+      if (e.k === undefined) e.k = classifyMenuItem(row[F.name]).kind;   // 분류는 행마다 한 번만 계산
+      if (e.k !== cls.kind) continue;                                     // 부분 일치는 같은 분류끼리만 (김치볶음밥 ≠ 김치볶음)
       const base = e.n.split('_')[0];
       if (base === target) { consider(row, 2 + (e.n.length - target.length) / 10); continue; }          // 김치찌개_돼지고기
       if (flat.includes(target)) { consider(row, 4 + (flat.length - target.length) / 10); continue; }   // 돌솥비빔밥 ⊂ 돌솥비빔밥_양념장
