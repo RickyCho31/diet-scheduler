@@ -1,5 +1,5 @@
 /* Diet Scheduler service worker: 네트워크 우선 + 캐시 폴백 (오프라인 대비). 배포 시 VERSION 올리면 옛 캐시 삭제 */
-const VERSION = 'ds-v2';
+const VERSION = 'ds-v3';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/store.js', './js/nutrition.js', './js/plans.js', './js/menu.js', './js/foods.js', './js/hangul.js',
@@ -20,17 +20,17 @@ self.addEventListener('fetch', (e) => {
   const isData = url.pathname.includes('/data/');
   if (isData) {
     // 네트워크 우선: 식단표/DB 갱신 반영, 오프라인이면 캐시
-    e.respondWith(fetch(e.request).then((res) => {
+    e.respondWith(fetch(e.request, { cache: 'no-cache' }).then((res) => {
       const copy = res.clone();
       caches.open(VERSION).then((c) => c.put(e.request, copy));
       return res;
-    }).catch(() => caches.match(e.request)));
+    }).catch(() => caches.match(e.request, { ignoreSearch: true })));
   } else {
-    // 앱 셸도 네트워크 우선: 배포 직후 바로 최신 반영, 오프라인이면 캐시
-    e.respondWith(fetch(e.request).then((res) => {
+    // 앱 셸도 네트워크 우선 (HTTP 캐시 무시하고 서버 재검증): 배포 직후 바로 최신 반영, 오프라인이면 캐시
+    e.respondWith(fetch(e.request, { cache: 'no-cache' }).then((res) => {
       const copy = res.clone();
       caches.open(VERSION).then((c) => c.put(e.request, copy));
       return res;
-    }).catch(() => caches.match(e.request)));
+    }).catch(() => caches.match(e.request, { ignoreSearch: true })));
   }
 });
