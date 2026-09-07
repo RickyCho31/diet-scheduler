@@ -1,0 +1,27 @@
+name: 진선미관 식단 갱신
+
+on:
+  schedule:
+    - cron: "0 22 * * *"   # 매일 07:00 KST
+    - cron: "0 3 * * 1,5"  # 월·금 12:00 KST 추가 확인
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 식단 스크래핑
+        run: python tools/scrape_menu.py
+      - name: 변경 사항 커밋
+        run: |
+          git config user.name "menu-bot"
+          git config user.email "menu-bot@users.noreply.github.com"
+          git add data/menu
+          if git diff --cached --quiet; then echo "변경 없음"; else git commit -m "menu: $(date -u +%F) 식단 갱신" && git push; fi
