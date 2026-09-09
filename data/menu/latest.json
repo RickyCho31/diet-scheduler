@@ -1,11 +1,11 @@
 {
- "updated_at": "2026-09-08T22:10:04",
+ "updated_at": "2026-09-09T22:09:17",
  "weeks": [
   {
    "week_start": "2026-09-07",
    "week_end": "2026-09-13",
    "source": "https://www.ewha.ac.kr/ewha/life/restaurant.do?mode=view&articleNo=903",
-   "fetched_at": "2026-09-08T22:10:01",
+   "fetched_at": "2026-09-09T22:09:14",
    "days": [
     {
      "date": "2026-09-07",
