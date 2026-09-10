@@ -1,6 +1,6 @@
 // Diet Scheduler — UI
 import { store, MEALS, MEAL_NAME, addDays, localDate } from './store.js';
-import { targets, recommended, weightTrend, mealBudgets, decideCafeteria, snackPlan, sumItems, mealTotal, dayTotal, PORTIONS, PORTION_LABEL, NUTRS, NUTR_LABEL, NUTR_UNIT, pct } from './nutrition.js';
+import { targets, recommended, weightTrend, weightAvg, mealBudgets, decideCafeteria, snackPlan, sumItems, mealTotal, dayTotal, PORTIONS, PORTION_LABEL, NUTRS, NUTR_LABEL, NUTR_UNIT, pct } from './nutrition.js';
 import { BREAKFAST, LUNCHBOX, RETORT, breakfastsFor, lunchboxesFor, retortsFor, buildRecipe, scaleFor, retortItem, retortCombo, pickLunchbox, findRecipe } from './plans.js';
 import { loadFoods, foodsReady, searchFoods, nutrientsFor, matchMenuItem, F } from './foods.js';
 import { loadMenu, menuFor, cafeteriaItems, menuData, weekStarting } from './menu.js';
@@ -101,7 +101,7 @@ function viewToday() {
   let h = `<div class="card">
     <div class="row between"><h1 class="tight">${esc(fmtDate(iso))} ${iso === store.today() ? '오늘' : ''}</h1>
       <div class="row"><input class="inline" type="number" step="0.1" inputmode="decimal" id="w-in" placeholder="체중 kg" value="${store.state.weights[iso] ?? ''}"><button class="btn sm" data-action="save-weight">저장</button></div></div>
-    <div class="muted">${c.w ? `최근 체중 ${c.w.kg}kg (${fmtDate(c.w.date)})` : '체중을 입력하면 목표가 계산됩니다'} · 목표 ${c.tg.kcal}kcal · 단백질 ${c.tg.prot}g</div>
+    <div class="muted">${c.w ? `최근 체중 ${c.w.kg}kg (${fmtDate(c.w.date)})` : '체중을 입력하면 목표가 계산됩니다'} · 목표 ${c.tg.kcal}kcal${c.tg.floored ? ` <span class="chip warn">하한 ${c.tg.floorKcal} 적용</span>` : c.tg.mode === 'manual' ? ' <span class="chip">직접 지정</span>' : ''} · 단백질 ${c.tg.prot}g</div>
     <div style="margin-top:8px" class="kv"><span>칼로리 ${c.total.kcal} / ${c.tg.kcal}</span><span class="${over ? 'chip bad' : 'chip'}">${over ? '초과 ' + (c.total.kcal - c.tg.kcal) : '남음 ' + (c.tg.kcal - c.total.kcal)}</span></div>
     <div class="bar ${over ? 'over' : ''}"><i style="width:${Math.min(100, pct(c.total.kcal, c.tg.kcal))}%"></i></div>
     <div style="margin-top:6px" class="kv"><span>단백질 ${r1(c.total.prot)} / ${c.tg.prot}g</span><span class="chip">${pct(c.total.prot, c.tg.prot)}%</span></div>
@@ -341,12 +341,10 @@ function viewStats() {
   // 체중 (30일)
   const wdays = lastNDays(30);
   const wpts = wdays.map((iso, i) => ({ i, iso, kg: store.state.weights[iso] })).filter((p) => p.kg != null);
-  if (wpts.length >= 2) {
-    const W = 600, H = 160, pad = 28;
-    const min = Math.min(...wpts.map((p) => p.kg)) - 0.5, max = Math.max(...wpts.map((p) => p.kg)) + 0.5;
-    const x = (i) => pad + (i / 29) * (W - pad * 2), y = (kg) => H - pad - ((kg - min) / (max - min)) * (H - pad * 2);
-    const path = wpts.map((p, k) => `${k ? 'L' : 'M'}${x(p.i).toFixed(1)},${y(p.kg).toFixed(1)}`).join(' ');
-    const first = wpts[0], last = wpts[wpts.length - 1];
+  {
+    const latest = store.latestWeight(store.today());
+    const a7 = weightAvg(store.state.weights, store.today(), 7);
+    const a7prev = weightAvg(store.state.weights, addDays(store.today(), -7), 7);
     const tr = weightTrend(store.state.weights, store.today(), 14);
     const rec = recommended(store.state.profile);
     let paceMsg = '';
@@ -357,8 +355,19 @@ function viewStats() {
       else if (lose >= rec.paceMin) paceMsg = `<div class="banner ok small">최근 2주 주 ${lose.toFixed(2)} kg 감량. 안전하고 충분한 속도입니다 (목표 주 ${tg.pace} kg).</div>`;
       else if (lose >= 0) paceMsg = `<div class="banner partial small">최근 2주 주 ${lose.toFixed(2)} kg. 목표(주 ${tg.pace} kg)보다 느립니다. 4주 이상 이어지면 설정에서 속도를 한 단계 올리거나 산책을 늘리세요.</div>`;
       else paceMsg = `<div class="banner partial small">최근 2주 체중이 주 ${(-lose).toFixed(2)} kg 늘었습니다. 기록 누락이나 외식이 잦지 않았는지 확인해 보세요.</div>`;
-    }
-    h += `<div class="card"><div class="row between"><h2 class="tight">체중 30일</h2><span class="chip ${last.kg <= first.kg ? 'ok' : 'warn'}">${(last.kg - first.kg > 0 ? '+' : '') + (last.kg - first.kg).toFixed(1)} kg</span></div>${paceMsg}
+    } else paceMsg = `<div class="muted small">감량 속도는 서로 다른 날짜의 체중이 3개 이상(5일 이상 간격) 모이면 계산됩니다.</div>`;
+    h += `<div class="card"><h2>체중</h2>
+      <div class="kv"><span>최근 체중</span><b>${latest ? latest.kg + ' kg (' + fmtDate(latest.date) + ')' : '기록 없음'}</b>
+      <span>7일 평균</span><b>${a7 ? a7.avg + ' kg (' + a7.n + '회)' : '-'}${a7 && a7prev ? ` <span class="chip ${a7.avg <= a7prev.avg ? 'ok' : 'warn'}">지난주 대비 ${(a7.avg - a7prev.avg > 0 ? '+' : '') + (a7.avg - a7prev.avg).toFixed(2)}</span>` : ''}</b>
+      <span>2주 추세</span><b>${tr ? (tr.perWeek > 0 ? '+' : '') + tr.perWeek + ' kg/주' : '-'}</b></div>${paceMsg}</div>`;
+  }
+  if (wpts.length >= 2) {
+    const W = 600, H = 160, pad = 28;
+    const min = Math.min(...wpts.map((p) => p.kg)) - 0.5, max = Math.max(...wpts.map((p) => p.kg)) + 0.5;
+    const x = (i) => pad + (i / 29) * (W - pad * 2), y = (kg) => H - pad - ((kg - min) / (max - min)) * (H - pad * 2);
+    const path = wpts.map((p, k) => `${k ? 'L' : 'M'}${x(p.i).toFixed(1)},${y(p.kg).toFixed(1)}`).join(' ');
+    const first = wpts[0], last = wpts[wpts.length - 1];
+    h += `<div class="card"><div class="row between"><h2 class="tight">체중 30일</h2><span class="chip ${last.kg <= first.kg ? 'ok' : 'warn'}">${(last.kg - first.kg > 0 ? '+' : '') + (last.kg - first.kg).toFixed(1)} kg</span></div>
       <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="체중 추이"><line x1="${pad}" x2="${W - pad}" y1="${H - pad}" y2="${H - pad}" stroke="var(--line)"/><path d="${path}" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linejoin="round"/>
       ${wpts.map((p) => `<circle cx="${x(p.i).toFixed(1)}" cy="${y(p.kg).toFixed(1)}" r="4" fill="var(--brand)" stroke="var(--card)" stroke-width="2"><title>${p.iso} ${p.kg}kg</title></circle>`).join('')}
       <text x="${x(first.i)}" y="${y(first.kg) - 8}" font-size="11" fill="var(--muted)" text-anchor="middle">${first.kg}</text><text x="${x(last.i)}" y="${y(last.kg) - 8}" font-size="11" fill="var(--ink)" text-anchor="middle" font-weight="600">${last.kg}</text></svg></div>`;
@@ -384,7 +393,7 @@ function viewStats() {
     <div class="dots" style="margin-top:8px">${rows.map((r) => `<span class="dot ${r.walks.l && r.walks.d ? 'on' : (r.walks.l || r.walks.d) ? 'half' : ''}" title="${r.iso}">${fmtDate(r.iso).slice(-2, -1)}</span>`).join('')}</div>
     <div class="muted small" style="margin-top:6px">점심·저녁 각 15분. 초록=둘 다, 연두=하나만.</div></div>`;
   // 7일 영양 평균 표
-  h += `<div class="card"><h2>7일 평균 영양 <span class="muted small">(기록 있는 ${logged.length}일)</span></h2><table class="menu-table"><tbody>
+  h += `<div class="card"><h2>7일 평균 영양 <span class="muted small">(기록 있는 ${logged.length}일)</span></h2><div class="muted small" style="margin-bottom:6px">목표는 설정(성별·나이·키·활동량·감량 속도)과 최근 체중으로 계산됩니다${tg.floored ? ` · 현재 하한 ${tg.floorKcal} kcal 적용` : ''}${tg.mode === 'manual' ? ' · 목표 칼로리 직접 지정 중' : ''}</div><table class="menu-table"><tbody>
     ${NUTRS.map((k) => `<tr><th>${NUTR_LABEL[k]}</th><td>${avg(k)} ${NUTR_UNIT[k]}</td><td class="muted">목표 ${tg[k] ?? '-'} ${NUTR_UNIT[k]}${k === 'sodium' ? ' 이하' : ''}</td></tr>`).join('')}</tbody></table></div>`;
   // 히스토리
   const all = Object.keys(store.state.days).filter((k) => MEALS.some((m) => store.state.days[k].meals?.[m]?.source)).sort().reverse().slice(0, 60);

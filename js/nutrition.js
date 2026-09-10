@@ -57,9 +57,17 @@ export function targets(profile, weightKg) {
   return {
     kcal, prot, bmr: Math.round(b), tdee: Math.round(tdee), deficit, expectedPace, pace, mode, floored, floorKcal: rec.floorKcal, ppk,
     carb: Math.round((kcal * rec.carbShare) / 4), fat: Math.round((kcal * rec.fatShare) / 9),
-    fiber: 25, sodium: 2000, sugar: Math.round((kcal * 0.08) / 4),
+    fiber: profile.sex === 'F' ? 25 : 30, sodium: 2000, sugar: Math.round((kcal * 0.10) / 4),   // 한국인 영양섭취기준: 식이섬유 여 20~25 / 남 25~30 g, 나트륨 2000mg 이하, 당류 10% 미만
     belowFloor: kcal < rec.floorKcal,
   };
+}
+
+/** 최근 n일 체중 평균 */
+export function weightAvg(weights, endIso, days = 7) {
+  const start = new Date(endIso + 'T12:00:00'); start.setDate(start.getDate() - (days - 1));
+  const s = start.toISOString().slice(0, 10);
+  const v = Object.keys(weights).filter((k) => k >= s && k <= endIso).map((k) => weights[k]);
+  return v.length ? { avg: Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 100) / 100, n: v.length } : null;
 }
 
 /** 최근 체중 기록으로 주당 감량 속도 추정 (최소제곱 기울기). 반환 kg/주, 데이터 부족 시 null */
