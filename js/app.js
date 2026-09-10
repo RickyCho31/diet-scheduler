@@ -1,6 +1,6 @@
 // Diet Scheduler — UI
 import { store, MEALS, MEAL_NAME, addDays, localDate } from './store.js';
-import { targets, recommended, weightTrend, weightAvg, mealBudgets, decideCafeteria, snackPlan, sumItems, mealTotal, dayTotal, PORTIONS, PORTION_LABEL, NUTRS, NUTR_LABEL, NUTR_UNIT, pct } from './nutrition.js';
+import { targets, recommended, weightTrend, weightAvg, mealBudgets, decideCafeteria, snackPlan, sumItems, mealTotal, dayTotal, PORTIONS, PORTION_LABEL, NUTRS, MICROS, NUTR_LABEL, NUTR_UNIT, UPPER_LIMIT, SUPPLEMENTS, supplementFor, pct } from './nutrition.js';
 import { BREAKFAST, LUNCHBOX, RETORT, breakfastsFor, lunchboxesFor, retortsFor, buildRecipe, scaleFor, retortItem, retortCombo, pickLunchbox, findRecipe } from './plans.js';
 import { loadFoods, foodsReady, searchFoods, nutrientsFor, matchMenuItem, F } from './foods.js';
 import { loadMenu, menuFor, cafeteriaItems, menuData, weekStarting } from './menu.js';
@@ -57,7 +57,7 @@ function ctx(iso) {
   const w = store.latestWeight(iso);
   const tg = targets(p, w ? w.kg : null);
   const mb = mealBudgets(day, tg, p);
-  return { day, p, w, tg, ...mb, total: dayTotal(day) };
+  return { day, p, w, tg, ...mb, total: dayTotal(day, p) };
 }
 
 function recentLunchboxIds(iso, n = 5) {
@@ -109,6 +109,8 @@ function viewToday() {
     <div class="muted small" style="margin-top:6px">탄 ${r1(c.total.carb)}g · 지 ${r1(c.total.fat)}g · 섬유 ${r1(c.total.fiber)}g · 나트륨 ${Math.round(c.total.sodium)}mg</div>
   </div>`;
   for (const m of MEALS) h += mealCard(iso, m, c);
+  const sup = supplementFor(c.p);
+  if (sup.id !== 'none') h += `<div class="card ${c.day.supp ? 'logged' : ''}"><label class="check" style="padding:0"><input type="checkbox" data-action="supp" ${c.day.supp ? 'checked' : ''}><span><b>영양제</b> ${esc(sup.name)} 1정<span class="muted small" style="display:block">비타민D ${sup.vd}μg · A ${sup.va}μg · C ${sup.vc}mg · B1 ${sup.b1}mg · B2 ${sup.b2}mg · 니아신 ${sup.nia}mg${sup.fe ? ' · 철 ' + sup.fe + 'mg' : ''} — 체크하면 오늘 영양 합계에 포함</span></span></label></div>`;
   h += `<div class="card"><label class="f">메모<textarea id="note" rows="2" placeholder="오늘 컨디션, 부작용, 특이사항">${esc(c.day.note || '')}</textarea></label><button class="btn sm" data-action="save-note">메모 저장</button></div>`;
   return h;
 }
@@ -367,37 +369,59 @@ function viewStats() {
     const x = (i) => pad + (i / 29) * (W - pad * 2), y = (kg) => H - pad - ((kg - min) / (max - min)) * (H - pad * 2);
     const path = wpts.map((p, k) => `${k ? 'L' : 'M'}${x(p.i).toFixed(1)},${y(p.kg).toFixed(1)}`).join(' ');
     const first = wpts[0], last = wpts[wpts.length - 1];
+    const maPts = wdays.map((iso, i) => { const a = weightAvg(store.state.weights, iso, 7); return a && store.state.weights[iso] != null ? `${x(i).toFixed(1)},${y(a.avg).toFixed(1)}` : null; }).filter(Boolean);
+    const maPath = maPts.map((pt, k) => (k ? 'L' : 'M') + pt).join(' ');
     h += `<div class="card"><div class="row between"><h2 class="tight">체중 30일</h2><span class="chip ${last.kg <= first.kg ? 'ok' : 'warn'}">${(last.kg - first.kg > 0 ? '+' : '') + (last.kg - first.kg).toFixed(1)} kg</span></div>
-      <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="체중 추이"><line x1="${pad}" x2="${W - pad}" y1="${H - pad}" y2="${H - pad}" stroke="var(--line)"/><path d="${path}" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linejoin="round"/>
+      <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="체중 추이"><line x1="${pad}" x2="${W - pad}" y1="${H - pad}" y2="${H - pad}" stroke="var(--line)"/><path d="${path}" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linejoin="round" opacity="0.55"/><path d="${maPath}" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-linejoin="round"/>
       ${wpts.map((p) => `<circle cx="${x(p.i).toFixed(1)}" cy="${y(p.kg).toFixed(1)}" r="4" fill="var(--brand)" stroke="var(--card)" stroke-width="2"><title>${p.iso} ${p.kg}kg</title></circle>`).join('')}
-      <text x="${x(first.i)}" y="${y(first.kg) - 8}" font-size="11" fill="var(--muted)" text-anchor="middle">${first.kg}</text><text x="${x(last.i)}" y="${y(last.kg) - 8}" font-size="11" fill="var(--ink)" text-anchor="middle" font-weight="600">${last.kg}</text></svg></div>`;
+      <text x="${x(first.i)}" y="${y(first.kg) - 8}" font-size="11" fill="var(--muted)" text-anchor="middle">${first.kg}</text><text x="${x(last.i)}" y="${y(last.kg) - 8}" font-size="11" fill="var(--ink)" text-anchor="middle" font-weight="600">${last.kg}</text></svg><div class="legend"><span><i style="background:var(--brand);opacity:.55"></i>일일 체중</span><span><i style="background:var(--ink);height:2px;vertical-align:2px"></i>7일 이동평균</span></div></div>`;
   }
-  // 칼로리 7일 막대
-  const W = 600, H = 170, pad = 28, bw = 48;
-  const maxK = Math.max(tg.kcal * 1.2, ...rows.map((r) => r.t.kcal)) || 1;
-  const yK = (v) => H - pad - (v / maxK) * (H - pad * 2);
-  h += `<div class="card"><h2>칼로리 7일 <span class="muted small">평균 ${avg('kcal')} / 목표 ${tg.kcal}</span></h2>
-    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="7일 칼로리"><line x1="${pad}" x2="${W - pad}" y1="${yK(tg.kcal)}" y2="${yK(tg.kcal)}" stroke="var(--muted)" stroke-dasharray="4 4"/><text x="${W - pad}" y="${yK(tg.kcal) - 4}" font-size="11" fill="var(--muted)" text-anchor="end">목표 ${tg.kcal}</text>
-    ${rows.map((r, i) => { const x = pad + 12 + i * ((W - pad * 2 - 24) / 7); const hh = Math.max(0, (H - pad) - yK(r.t.kcal)); const over = r.t.kcal > r.tg.kcal; return `<rect x="${x}" y="${yK(r.t.kcal)}" width="${bw}" height="${hh}" rx="4" fill="${over ? 'var(--bad)' : 'var(--brand)'}"><title>${r.iso}: ${r.t.kcal} kcal</title></rect><text x="${x + bw / 2}" y="${H - pad + 14}" font-size="11" fill="var(--muted)" text-anchor="middle">${fmtDate(r.iso).slice(0, -4)}</text>${r.t.kcal ? `<text x="${x + bw / 2}" y="${yK(r.t.kcal) - 4}" font-size="11" fill="var(--ink)" text-anchor="middle">${r.t.kcal}</text>` : ''}`; }).join('')}
-    <line x1="${pad}" x2="${W - pad}" y1="${H - pad}" y2="${H - pad}" stroke="var(--line)"/></svg></div>`;
-  // 단백질 7일
-  const maxP = Math.max(tg.prot * 1.2, ...rows.map((r) => r.t.prot)) || 1;
-  const yP = (v) => H - pad - (v / maxP) * (H - pad * 2);
-  h += `<div class="card"><h2>단백질 7일 <span class="muted small">평균 ${avg('prot')}g / 목표 ${tg.prot}g</span></h2>
-    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="7일 단백질"><line x1="${pad}" x2="${W - pad}" y1="${yP(tg.prot)}" y2="${yP(tg.prot)}" stroke="var(--muted)" stroke-dasharray="4 4"/>
-    ${rows.map((r, i) => { const x = pad + 12 + i * ((W - pad * 2 - 24) / 7); const hh = Math.max(0, (H - pad) - yP(r.t.prot)); return `<rect x="${x}" y="${yP(r.t.prot)}" width="${bw}" height="${hh}" rx="4" fill="var(--accent)"><title>${r.iso}: ${r1(r.t.prot)} g</title></rect><text x="${x + bw / 2}" y="${H - pad + 14}" font-size="11" fill="var(--muted)" text-anchor="middle">${fmtDate(r.iso).slice(0, -4)}</text>${r.t.prot ? `<text x="${x + bw / 2}" y="${yP(r.t.prot) - 4}" font-size="11" fill="var(--ink)" text-anchor="middle">${Math.round(r.t.prot)}</text>` : ''}`; }).join('')}
-    <line x1="${pad}" x2="${W - pad}" y1="${H - pad}" y2="${H - pad}" stroke="var(--line)"/></svg></div>`;
+  // 14일 막대 + 7일 이동평균선 (칼로리·단백질)
+  const days14 = lastNDays(14);
+  const rows14 = days14.map((iso) => { const c = ctx(iso); return { iso, t: c.total, has: MEALS.some((m) => c.day.meals[m]?.source) }; });
+  const ma7 = (list, getter, hasFn) => list.map((_, i) => { const win = list.slice(Math.max(0, i - 6), i + 1).filter(hasFn); return win.length ? win.reduce((a, r) => a + getter(r), 0) / win.length : null; });
+  const barChart = (title, getter, target, unit, color, sub) => {
+    const W = 600, H = 190, padL = 36, padR = 16, padT = 18, padB = 26, n = rows14.length;
+    const vals = rows14.map((r) => (r.has ? getter(r) : 0));
+    const ma = ma7(rows14, getter, (r) => r.has);
+    const maxV = Math.max(target * 1.2, ...vals, ...ma.filter((v) => v != null)) || 1;
+    const y = (v) => H - padB - (v / maxV) * (H - padB - padT);
+    const slot = (W - padL - padR) / n, bw = Math.min(30, slot * 0.62);
+    const x = (i) => padL + slot * i + (slot - bw) / 2;
+    const linePts = ma.map((v, i) => (v == null ? null : `${(x(i) + bw / 2).toFixed(1)},${y(v).toFixed(1)}`));
+    let d = '', pen = false;
+    linePts.forEach((pt) => { if (!pt) { pen = false; return; } d += (pen ? ' L' : ' M') + pt; pen = true; });
+    const last = ma[n - 1];
+    return `<div class="card"><h2>${title} <span class="muted small">${sub}</span></h2>
+      <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${title}">
+        <line x1="${padL}" x2="${W - padR}" y1="${y(target)}" y2="${y(target)}" stroke="var(--muted)" stroke-dasharray="4 4"/><text x="${W - padR}" y="${y(target) - 4}" font-size="11" fill="var(--muted)" text-anchor="end">목표 ${target}</text>
+        ${rows14.map((r, i) => r.has ? `<rect x="${x(i).toFixed(1)}" y="${y(vals[i]).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0, H - padB - y(vals[i])).toFixed(1)}" rx="3" fill="${UPPER_LIMIT.has(unit) ? color : (vals[i] > target * 1.05 ? 'var(--bad)' : color)}" opacity="0.85"><title>${r.iso}: ${Math.round(vals[i])}</title></rect>` : '').join('')}
+        <path d="${d.trim()}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+        ${last != null ? `<text x="${(x(n - 1) + bw / 2).toFixed(1)}" y="${(y(last) - 6).toFixed(1)}" font-size="11" fill="var(--ink)" text-anchor="middle" font-weight="600">${Math.round(last)}</text>` : ''}
+        ${rows14.map((r, i) => (i % 2 === (n - 1) % 2) ? `<text x="${(x(i) + bw / 2).toFixed(1)}" y="${H - 8}" font-size="10" fill="var(--muted)" text-anchor="middle">${r.iso.slice(5).replace('-', '/')}</text>` : '').join('')}
+        <line x1="${padL}" x2="${W - padR}" y1="${H - padB}" y2="${H - padB}" stroke="var(--line)"/></svg>
+      <div class="legend"><span><i style="background:${color}"></i>일일</span><span><i style="background:var(--ink);height:2px;vertical-align:2px"></i>7일 이동평균</span><span><i style="border-top:2px dashed var(--muted);height:0;vertical-align:2px"></i>목표</span></div></div>`;
+  };
+  h += barChart('칼로리 14일', (r) => r.t.kcal, tg.kcal, 'kcal', 'var(--brand)', `7일 평균 ${avg('kcal')} / 목표 ${tg.kcal} kcal`);
+  h += barChart('단백질 14일', (r) => r.t.prot, tg.prot, 'g', 'var(--accent)', `7일 평균 ${avg('prot')} / 목표 ${tg.prot} g`);
   // 산책 & 준수
   const walkCount = rows.reduce((a, r) => a + (r.walks.l ? 1 : 0) + (r.walks.d ? 1 : 0), 0);
   h += `<div class="card"><div class="row between"><h2 class="tight">식후 산책 7일</h2><span class="chip ${walkCount >= 10 ? 'ok' : walkCount >= 6 ? 'warn' : ''}">${walkCount} / 14</span></div>
     <div class="dots" style="margin-top:8px">${rows.map((r) => `<span class="dot ${r.walks.l && r.walks.d ? 'on' : (r.walks.l || r.walks.d) ? 'half' : ''}" title="${r.iso}">${fmtDate(r.iso).slice(-2, -1)}</span>`).join('')}</div>
     <div class="muted small" style="margin-top:6px">점심·저녁 각 15분. 초록=둘 다, 연두=하나만.</div></div>`;
-  // 7일 영양 평균 표
-  h += `<div class="card"><h2>7일 평균 영양 <span class="muted small">(기록 있는 ${logged.length}일)</span></h2><div class="muted small" style="margin-bottom:6px">목표는 설정(성별·나이·키·활동량·감량 속도)과 최근 체중으로 계산됩니다${tg.floored ? ` · 현재 하한 ${tg.floorKcal} kcal 적용` : ''}${tg.mode === 'manual' ? ' · 목표 칼로리 직접 지정 중' : ''}</div><table class="menu-table"><tbody>
-    ${NUTRS.map((k) => `<tr><th>${NUTR_LABEL[k]}</th><td>${avg(k)} ${NUTR_UNIT[k]}</td><td class="muted">목표 ${tg[k] ?? '-'} ${NUTR_UNIT[k]}${k === 'sodium' ? ' 이하' : ''}</td></tr>`).join('')}</tbody></table></div>`;
+  // 영양 표: 오늘 | 7일 평균 | 목표 (+ 미량영양소 펼치기)
+  const todayT = ctx(store.today()).total;
+  const fmtV = (v, k) => (v == null ? '-' : (k === 'kcal' || NUTR_UNIT[k] === 'mg' || k === 'va' ? Math.round(v) : Math.round(v * 10) / 10));
+  const cell = (v, k) => { if (v == null || !tg[k]) return `<td>${fmtV(v, k)}</td>`; const r = v / tg[k]; const cls = UPPER_LIMIT.has(k) ? (r > 1 ? 'bad' : 'ok') : (r >= 0.9 ? 'ok' : r >= 0.6 ? 'warn' : 'bad'); return `<td><span class="chip ${cls}">${fmtV(v, k)}</span></td>`; };
+  const rowHtml = (k) => `<tr><th>${NUTR_LABEL[k]}<span class="muted small" style="font-weight:400"> ${NUTR_UNIT[k]}</span></th>${cell(todayT[k], k)}${cell(logged.length ? avg(k) : null, k)}<td class="muted">${tg[k] ?? '-'}${UPPER_LIMIT.has(k) ? ' 이하' : ''}</td></tr>`;
+  h += `<div class="card"><h2>영양 섭취 <span class="muted small">(7일 평균은 기록 있는 ${logged.length}일 기준)</span></h2><div class="muted small" style="margin-bottom:6px">목표는 설정(성별·나이·키·활동량·감량 속도)과 최근 체중으로 계산됩니다${tg.floored ? ` · 현재 하한 ${tg.floorKcal} kcal 적용` : ''}${tg.mode === 'manual' ? ' · 목표 칼로리 직접 지정 중' : ''}. 초록 90% 이상 · 주황 60~90% · 빨강 60% 미만(상한형은 초과 시 빨강)</div>
+    <div style="overflow-x:auto"><table class="menu-table"><thead><tr><th></th><th>오늘</th><th>7일 평균</th><th>목표</th></tr></thead><tbody>
+    ${NUTRS.map(rowHtml).join('')}</tbody></table></div>
+    <details style="margin-top:8px"><summary>미량영양소·비타민 펼치기 (중요도 순)</summary><div style="overflow-x:auto"><table class="menu-table"><thead><tr><th></th><th>오늘</th><th>7일 평균</th><th>목표</th></tr></thead><tbody>${MICROS.map(rowHtml).join('')}</tbody></table></div>
+    <div class="muted small" style="margin-top:6px">목표: 한국인 영양섭취기준(2020) 성인 권장·충분섭취량. 콜레스테롤·포화지방은 권고 상한. 진선미 메뉴·외식은 식약처 DB에 미량영양소 값이 있는 항목만 합산되므로 실제보다 낮게 나올 수 있습니다. ${supplementFor(store.state.profile).id !== 'none' ? '영양제 체크 시 라벨값이 더해집니다(엽산·B12·아연 등 표에 없는 성분은 영양제로 충족).' : ''}</div></details></div>`;
   // 히스토리
   const all = Object.keys(store.state.days).filter((k) => MEALS.some((m) => store.state.days[k].meals?.[m]?.source)).sort().reverse().slice(0, 60);
-  h += `<div class="card"><h2>지난 기록</h2>${all.length ? `<ul class="list hist">${all.map((iso) => { const t = dayTotal(store.state.days[iso]); const dd = store.state.days[iso]; return `<li data-action="goto" data-date="${iso}" style="cursor:pointer"><span class="name"><span class="d">${fmtDate(iso)}</span> ${store.state.weights[iso] ? '· ' + store.state.weights[iso] + 'kg' : ''}<span class="sub">${MEALS.filter((m) => dd.meals[m]?.source).map((m) => MEAL_NAME[m] + ':' + srcLabel(dd.meals[m].source)).join(' ')} ${dd.walks.l || dd.walks.d ? '· 산책 ' + ((dd.walks.l ? 1 : 0) + (dd.walks.d ? 1 : 0)) : ''}</span></span><span class="chip">${t.kcal} kcal · ${Math.round(t.prot)}g</span></li>`; }).join('')}</ul>` : '<div class="muted">아직 기록이 없습니다</div>'}</div>`;
+  h += `<div class="card"><h2>지난 기록</h2>${all.length ? `<ul class="list hist">${all.map((iso) => { const dd = store.state.days[iso]; const t = dayTotal(dd, store.state.profile); return `<li data-action="goto" data-date="${iso}" style="cursor:pointer"><span class="name"><span class="d">${fmtDate(iso)}</span> ${store.state.weights[iso] ? '· ' + store.state.weights[iso] + 'kg' : ''}<span class="sub">${MEALS.filter((m) => dd.meals[m]?.source).map((m) => MEAL_NAME[m] + ':' + srcLabel(dd.meals[m].source)).join(' ')} ${dd.walks.l || dd.walks.d ? '· 산책 ' + ((dd.walks.l ? 1 : 0) + (dd.walks.d ? 1 : 0)) : ''}</span></span><span class="chip">${t.kcal} kcal · ${Math.round(t.prot)}g</span></li>`; }).join('')}</ul>` : '<div class="muted">아직 기록이 없습니다</div>'}</div>`;
   h += `<div class="card"><h2>백업</h2><div class="btns"><button class="btn" data-action="export">JSON 내보내기</button><button class="btn" data-action="import">JSON 가져오기</button></div><div class="muted small" style="margin-top:6px">기록은 이 기기(브라우저)에만 저장됩니다. 가끔 내보내기로 백업해 두세요.</div></div>`;
   return h;
 }
@@ -421,6 +445,7 @@ function viewSettings() {
       <label class="f">단백질 g/kg (비우면 권장값 ${rec.proteinPerKg})<input type="number" step="0.1" id="p-ppk" value="${p.proteinPerKg ?? ''}" placeholder="자동 ${rec.proteinPerKg}"></label>
       <label class="f">목표 칼로리 직접 지정 (비우면 자동)<input type="number" step="10" id="p-goal" value="${p.goalKcal ?? ''}" placeholder="자동"></label>
       <label class="check" style="grid-column:1/-1"><input type="checkbox" id="p-nodairy" ${p.noDairy ? 'checked' : ''}><span>유제품(그릭요거트·우유 등) 추천에서 제외</span></label>
+      <label class="f" style="grid-column:1/-1">영양제 (오늘 탭에서 체크하면 영양 합계에 포함)<select id="p-supp">${opt('auto', p.supplement || 'auto', '자동 (남: One Daily Iron Free / 여: Women\'s One Daily)')}${opt('mf-men', p.supplement, SUPPLEMENTS['mf-men'].name)}${opt('mf-women', p.supplement, SUPPLEMENTS['mf-women'].name)}${opt('none', p.supplement, '없음')}</select></label>
     </div>
     <div class="banner ${tg.belowFloor ? 'lunchbox' : tg.floored ? 'partial' : 'ok'} small">
       <b>계산 결과</b> ${w ? `(체중 ${w.kg}kg 기준)` : '(체중 미입력: 70kg 가정)'}<br>
@@ -474,6 +499,7 @@ function refocus() { const q = $('#food-q'); if (q) { q.focus(); q.setSelectionR
 $('#view').addEventListener('change', (e) => {
   const t = e.target;
   if (t.dataset.action === 'prep') { const d = store.day(t.dataset.date); d.prepared[t.dataset.meal] = t.checked; store.save(); }
+  if (t.dataset.action === 'supp') { const d = store.day(ui.date); d.supp = t.checked; store.save(); render(); }
   if (t.dataset.action === 'grams') { const i = +t.dataset.idx; const it = ui.draft.items[i]; const g = +t.value; if (g > 0 && it.row) { const n = nutrientsFor(it.row, g); Object.assign(it, n, { name: it.name, portion: it.portion, row: it.row }); render(); refocus(); } }
 });
 
@@ -525,7 +551,7 @@ function rotatePlan(iso, m) {
 function saveProfile() {
   const p = store.state.profile;
   p.name = $('#p-name').value.trim(); p.sex = $('#p-sex').value; p.age = +$('#p-age').value || p.age; p.heightCm = +$('#p-height').value || p.heightCm;
-  p.activity = +$('#p-activity').value; p.pace = +$('#p-pace').value || 0.6; p.noDairy = $('#p-nodairy').checked;
+  p.activity = +$('#p-activity').value; p.pace = +$('#p-pace').value || 0.6; p.noDairy = $('#p-nodairy').checked; p.supplement = $('#p-supp').value;
   const ppk = parseFloat($('#p-ppk').value); p.proteinPerKg = ppk > 0 ? ppk : null;
   const g = parseFloat($('#p-goal').value); p.goalKcal = g > 0 ? g : null;
   let sum = 0; for (const m of MEALS) { p.split[m] = Math.max(0, +$(`#split-${m}`).value || 0); sum += p.split[m]; }

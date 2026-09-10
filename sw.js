@@ -1,8 +1,8 @@
 /* Diet Scheduler service worker: 네트워크 우선 + 캐시 폴백 (오프라인 대비). 배포 시 VERSION 올리면 옛 캐시 삭제 */
-const VERSION = 'ds-v3';
+const VERSION = 'ds-v4';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
-  './js/app.js', './js/store.js', './js/nutrition.js', './js/plans.js', './js/menu.js', './js/foods.js', './js/hangul.js',
+  './js/app.js', './js/store.js', './js/nutrition.js', './js/plans.js', './js/menu.js', './js/foods.js', './js/hangul.js', './js/ing_micro.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-512-maskable.png', './icons/icon-180.png'
 ];
 

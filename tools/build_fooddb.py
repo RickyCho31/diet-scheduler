@@ -1,6 +1,7 @@
 """식약처 통합DB 원본(jsonl.gz) → 앱용 압축 JSON(data/foods.json).
 
-행 형식: [name, brand, cat, unit, serving, kcal, carb, prot, fat, sugar, fiber, sodium]
+행 형식: [name, brand, cat, unit, serving, kcal, carb, prot, fat, sugar, fiber, sodium, ca, fe, k, p, va, b1, b2, nia, vc, vd, chol, sfa]
+ - 뒤 12개는 미량영양소(mg/μg, 100g 기준): 칼슘 철 칼륨 인 비타민A(μgRAE) B1 B2 니아신 비타민C 비타민D(μg) 콜레스테롤 포화지방(g). 값 없으면 null
  - 영양값은 100g(또는 100ml) 기준. serving = 1인분(g/ml) 또는 null.
  - cat: D=음식(외식 포함), R=원재료, P=가공식품
  - 같은 (이름, 브랜드)의 중복 행은 최신(CRT_YMD) 1건만 유지.
@@ -56,7 +57,10 @@ def main():
                "ml" if (r.get("NUT_CON_SRTR_QUA") or "").endswith("ml") else "g",
                size_num(r.get("SERV_SIZE")) or size_num(r.get("FOOD_SIZE")),
                num(r.get("ENERC"), 0), num(r.get("CHOCDF")), num(r.get("PROT")), num(r.get("FATCE")),
-               num(r.get("SUGAR")), num(r.get("FIBTG")), num(r.get("NAT"), 0)]
+               num(r.get("SUGAR")), num(r.get("FIBTG")), num(r.get("NAT"), 0),
+               num(r.get("CA"), 0), num(r.get("FE"), 1), num(r.get("K"), 0), num(r.get("P"), 0), num(r.get("VITA_RAE"), 0),
+               num(r.get("THIA"), 2), num(r.get("RIBF"), 2), num(r.get("NIA"), 1), num(r.get("VITC"), 0), num(r.get("VITD"), 1),
+               num(r.get("CHOLE"), 0), num(r.get("FASAT"), 1)]
         if rec[5] is None: return
         if key in seen and seen[key][0] >= ymd: return
         seen[key] = (ymd, rec)
@@ -76,7 +80,7 @@ def main():
     # 원재료/가공식품에는 1인분이 없으므로 대표 1회 제공량 기본값(앱에서 재조정 가능)
     cats = collections.Counter(x[2] for x in rows)
     out = {"_meta": {"source": "식품의약품안전처 식품영양성분 통합DB 표준데이터셋(음식/원재료/가공식품), 농촌진흥청 국가표준식품성분표",
-                     "fields": ["name", "brand", "cat", "unit", "serving", "kcal", "carb", "prot", "fat", "sugar", "fiber", "sodium"],
+                     "fields": ["name", "brand", "cat", "unit", "serving", "kcal", "carb", "prot", "fat", "sugar", "fiber", "sodium", "ca", "fe", "k", "p", "va", "b1", "b2", "nia", "vc", "vd", "chol", "sfa"],
                      "basis": "영양값은 100g/100ml 기준", "counts": dict(cats)},
            "rows": rows}
     with open(OUT, "w", encoding="utf-8") as f:

@@ -4,7 +4,8 @@ import { choseong, isChoseongOnly, norm } from './hangul.js';
 let DB = null;      // {rows:[...], index:[{n, c, i}]}
 let loading = null;
 
-export const F = { name: 0, brand: 1, cat: 2, unit: 3, serving: 4, kcal: 5, carb: 6, prot: 7, fat: 8, sugar: 9, fiber: 10, sodium: 11 };
+export const F = { name: 0, brand: 1, cat: 2, unit: 3, serving: 4, kcal: 5, carb: 6, prot: 7, fat: 8, sugar: 9, fiber: 10, sodium: 11, ca: 12, fe: 13, k: 14, p: 15, va: 16, b1: 17, b2: 18, nia: 19, vc: 20, vd: 21, chol: 22, sfa: 23 };
+const MICRO = ['ca', 'fe', 'k', 'p', 'va', 'b1', 'b2', 'nia', 'vc', 'vd', 'chol', 'sfa'];
 
 export function loadFoods() {
   if (DB) return Promise.resolve(DB);
@@ -24,14 +25,16 @@ export function foodsReady() { return !!DB; }
 export function nutrientsFor(row, grams) {
   const g = grams ?? row[F.serving] ?? 100;
   const k = g / 100;
-  const v = (i) => (row[i] == null ? null : Math.round(row[i] * k * 10) / 10);
-  return {
+  const v = (i) => (row[i] == null ? null : Math.round(row[i] * k * 100) / 100);
+  const out = {
     name: row[F.name] + (row[F.brand] ? ` (${row[F.brand]})` : ''),
     grams: g, unit: row[F.unit],
     kcal: Math.round((row[F.kcal] || 0) * k),
     carb: v(F.carb), prot: v(F.prot), fat: v(F.fat), sugar: v(F.sugar), fiber: v(F.fiber), sodium: v(F.sodium),
     src: 'db',
   };
+  for (const m of MICRO) out[m] = v(F[m]);
+  return out;
 }
 
 const CAT_ORDER = { D: 0, P: 1, R: 2 };

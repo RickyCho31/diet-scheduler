@@ -1,9 +1,41 @@
 // 목표 계산 + 끼니별 예산 자동 조절 + 진선미/도시락 결정 로직
 import { MEALS } from './store.js';
+import { MICRO_KEYS } from './ing_micro.js';
 
 export const NUTRS = ['kcal', 'carb', 'prot', 'fat', 'sugar', 'fiber', 'sodium'];
-export const NUTR_LABEL = { kcal: '칼로리', carb: '탄수화물', prot: '단백질', fat: '지방', sugar: '당류', fiber: '식이섬유', sodium: '나트륨' };
-export const NUTR_UNIT = { kcal: 'kcal', carb: 'g', prot: 'g', fat: 'g', sugar: 'g', fiber: 'g', sodium: 'mg' };
+// 미량영양소 (중요도 순: 마운자로 식이에서 부족하기 쉬운 순서)
+export const MICROS = ['ca', 'fe', 'vd', 'k', 'va', 'vc', 'b1', 'b2', 'nia', 'p', 'chol', 'sfa'];
+export const ALL_KEYS = [...NUTRS, ...MICRO_KEYS];
+export const NUTR_LABEL = { kcal: '칼로리', carb: '탄수화물', prot: '단백질', fat: '지방', sugar: '당류', fiber: '식이섬유', sodium: '나트륨',
+  ca: '칼슘', fe: '철', vd: '비타민 D', k: '칼륨', va: '비타민 A', vc: '비타민 C', b1: '비타민 B1', b2: '비타민 B2', nia: '니아신', p: '인', chol: '콜레스테롤', sfa: '포화지방' };
+export const NUTR_UNIT = { kcal: 'kcal', carb: 'g', prot: 'g', fat: 'g', sugar: 'g', fiber: 'g', sodium: 'mg',
+  ca: 'mg', fe: 'mg', vd: 'μg', k: 'mg', va: 'μgRAE', vc: 'mg', b1: 'mg', b2: 'mg', nia: 'mg', p: 'mg', chol: 'mg', sfa: 'g' };
+// 상한형(이하가 좋은) 항목
+export const UPPER_LIMIT = new Set(['sodium', 'sugar', 'chol', 'sfa']);
+
+/** 영양제 1회분(1정) 성분. 값은 제품 라벨(Supplement Facts) 기준 */
+export const SUPPLEMENTS = {
+  none: { name: '없음' },
+  // megafood.com 공식 라벨(2026) 기준. 칼슘·마그네슘·칼륨은 두 제품 모두 미함유
+  'mf-men': { name: 'MegaFood One Daily (Iron Free)', va: 180, vc: 60, vd: 10, b1: 5, b2: 1.7, nia: 20, fe: 0, ca: 0, k: 0, p: 0,
+    extra: '비타민E 10mg·K 65μg·B6 6mg·엽산 400μg·B12 15μg·비오틴 30μg·판토텐산 10mg·요오드 75μg·아연 5mg·셀레늄 25μg·크롬 40μg' },
+  'mf-women': { name: "MegaFood Women's One Daily", va: 370, vc: 60, vd: 10, b1: 1.5, b2: 1.7, nia: 20, fe: 9, ca: 0, k: 0, p: 0,
+    extra: '비타민E 10mg·K 75μg·B6 4mg·엽산 400μg·B12 10μg·비오틴 30μg·판토텐산 10mg·요오드 100μg·아연 9mg·셀레늄 18μg·크롬 40μg' },
+};
+export function supplementFor(profile) {
+  const id = profile.supplement === 'auto' || !profile.supplement ? (profile.sex === 'F' ? 'mf-women' : 'mf-men') : profile.supplement;
+  return { id, ...SUPPLEMENTS[id] };
+}
+
+/** 한국인 영양섭취기준(2020) 성인 기준 미량영양소 목표 (권장섭취량/충분섭취량, 상한형은 권고 상한) */
+export function microTargets(profile, kcal) {
+  const f = profile.sex === 'F'; const age = profile.age || 40;
+  return {
+    ca: f ? 700 : 800, fe: f ? (age >= 50 ? 8 : 14) : 10, vd: age >= 65 ? 15 : 10, k: 3500,
+    va: f ? 650 : 800, vc: 100, b1: f ? 1.1 : 1.2, b2: f ? 1.2 : 1.5, nia: f ? 14 : 16, p: 700,
+    chol: 300, sfa: Math.round((kcal * 0.07) / 9),
+  };
+}
 
 export function bmr(p, weightKg) {
   // Mifflin-St Jeor
@@ -59,6 +91,7 @@ export function targets(profile, weightKg) {
     carb: Math.round((kcal * rec.carbShare) / 4), fat: Math.round((kcal * rec.fatShare) / 9),
     fiber: profile.sex === 'F' ? 25 : 30, sodium: 2000, sugar: Math.round((kcal * 0.10) / 4),   // 한국인 영양섭취기준: 식이섬유 여 20~25 / 남 25~30 g, 나트륨 2000mg 이하, 당류 10% 미만
     belowFloor: kcal < rec.floorKcal,
+    ...microTargets(profile, kcal),
   };
 }
 
@@ -83,12 +116,12 @@ export function weightTrend(weights, endIso, days = 14) {
 
 /** 로그 항목들의 실제 섭취 합계 (portion 반영) */
 export function sumItems(items) {
-  const out = Object.fromEntries(NUTRS.map((k) => [k, 0]));
+  const out = Object.fromEntries(ALL_KEYS.map((k) => [k, 0]));
   for (const it of items || []) {
     const p = it.portion ?? 1;
-    for (const k of NUTRS) if (it[k] != null) out[k] += it[k] * p;
+    for (const k of ALL_KEYS) if (it[k] != null) out[k] += it[k] * p;
   }
-  for (const k of NUTRS) out[k] = Math.round(out[k] * 10) / 10;
+  for (const k of ALL_KEYS) out[k] = Math.round(out[k] * 100) / 100;
   out.kcal = Math.round(out.kcal);
   return out;
 }
@@ -98,13 +131,18 @@ export function mealTotal(log) {
   return sumItems(log.items);
 }
 
-export function dayTotal(day) {
-  const acc = Object.fromEntries(NUTRS.map((k) => [k, 0]));
+/** 하루 합계 (영양제 체크 시 영양제 성분 포함) */
+export function dayTotal(day, profile) {
+  const acc = Object.fromEntries(ALL_KEYS.map((k) => [k, 0]));
   for (const m of MEALS) {
     const t = mealTotal(day.meals[m]);
-    for (const k of NUTRS) acc[k] += t[k];
+    for (const k of ALL_KEYS) acc[k] += t[k];
   }
-  for (const k of NUTRS) acc[k] = Math.round(acc[k] * 10) / 10;
+  if (day.supp && profile) {
+    const s = supplementFor(profile);
+    for (const k of ALL_KEYS) if (s[k]) acc[k] += s[k];
+  }
+  for (const k of ALL_KEYS) acc[k] = Math.round(acc[k] * 100) / 100;
   acc.kcal = Math.round(acc.kcal);
   return acc;
 }

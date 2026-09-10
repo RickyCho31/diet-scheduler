@@ -10,6 +10,7 @@ const DEFAULT_PROFILE = {
   pace: 0.6,               // 목표 감량 속도 kg/주 (0.4~1.0). 1kg 지방 ≈ 7700kcal
   proteinPerKg: null,      // null이면 나이 기반 권장값
   noDairy: false,          // 유제품(그릭요거트·우유) 추천 제외
+  supplement: 'auto',      // 영양제: auto(성별 기준 MegaFood) | none | mf-men | mf-women
   split: { b: 0.22, l: 0.34, s: 0.10, d: 0.34 },
   shake: { scoopG: 30, kcalPerScoop: 120, protPerScoop: 24, maxScoops: 2 },
   nuts: { kcalPer10g: 60, protPer10g: 2 },
@@ -28,7 +29,7 @@ export function addDays(iso, n) {
 }
 
 function blankDay() {
-  return { meals: { b: null, l: null, s: null, d: null }, walks: { l: false, d: false }, prepared: { l: false, d: false, b: false }, plan: {}, note: '' };
+  return { meals: { b: null, l: null, s: null, d: null }, walks: { l: false, d: false }, prepared: { l: false, d: false, b: false }, plan: {}, note: '', supp: false };
 }
 
 export const store = {
@@ -51,6 +52,7 @@ export const store = {
     const d = this.state.days[iso];
     if (!d.prepared) d.prepared = { l: false, d: false, b: false };
     if (!d.plan) d.plan = {};
+    if (d.supp === undefined) d.supp = false;
     return d;
   },
   hasDay(iso) { return !!this.state.days[iso]; },

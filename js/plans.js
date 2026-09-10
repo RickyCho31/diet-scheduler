@@ -1,6 +1,7 @@
 // 추천 식단(아침/도시락/간식/레토르트) 라이브러리. 영양값은 100g(ml) 기준 재료표에서 계산.
 // 재료값 출처: 식약처 통합DB/농진청 성분표 대표값을 반올림한 근사치 (앱 내 표기: 추정)
 // 조리 시간: 전자레인지 700W, 에어프라이어 예열 없음 기준
+import { ING_MICRO, MICRO_KEYS } from './ing_micro.js';
 
 export const ING = {
   // name: [kcal, carb, prot, fat, sugar, fiber, sodium] per 100 g/ml
@@ -74,16 +75,21 @@ export const ING = {
 const LABEL = { 소고기우둔: '소고기 우둔살(살코기)', 돼지안심: '돼지 안심', 닭다리살: '닭다리살(껍질 제거)', 흰살생선: '흰살생선(대구·가자미)', 저염된장: '저염 된장', 토마토소스: '토마토 소스(무가당)', 두유190: '두유 1팩', 무가당두유: '무가당 두유', 삶은계란: '삶은 계란', 닭가슴살: '훈제 닭가슴살', 닭가슴살소시지: '닭가슴살 소시지', 즉석현미밥: '즉석 현미밥', 냉동야채: '냉동 야채믹스', 견과믹스: '견과류', 편의점샐러드: '편의점 샐러드', 카레레토르트: '레토르트 카레', 참치캔: '참치캔(기름 뺀)' };
 const LIQUID = /(두유|우유|음료)/;
 
+const SUM_KEYS = ['kcal', 'carb', 'prot', 'fat', 'sugar', 'fiber', 'sodium', ...MICRO_KEYS];
+
 function nut(name, g) {
   const v = ING[name];
   const k = g / 100;
-  return { name, grams: g, unit: LIQUID.test(name) ? 'ml' : 'g', kcal: Math.round(v[0] * k), carb: +(v[1] * k).toFixed(1), prot: +(v[2] * k).toFixed(1), fat: +(v[3] * k).toFixed(1), sugar: +(v[4] * k).toFixed(1), fiber: +(v[5] * k).toFixed(1), sodium: Math.round(v[6] * k) };
+  const out = { name, grams: g, unit: LIQUID.test(name) ? 'ml' : 'g', kcal: Math.round(v[0] * k), carb: +(v[1] * k).toFixed(1), prot: +(v[2] * k).toFixed(1), fat: +(v[3] * k).toFixed(1), sugar: +(v[4] * k).toFixed(1), fiber: +(v[5] * k).toFixed(1), sodium: Math.round(v[6] * k) };
+  const m = ING_MICRO[name];
+  if (m) MICRO_KEYS.forEach((key, i) => { out[key] = +(m[i] * k).toFixed(2); });
+  return out;
 }
 
 /** 레시피를 배율(scale)로 확대/축소하여 재료·영양 반환. 고정 재료(fixed:true)와 액체(팩 단위)는 스케일 제외 */
 export function buildRecipe(recipe, scale = 1) {
   const parts = recipe.ing.map(([name, g, opts]) => ({ ...nut(name, Math.round(g * (((opts && opts.fixed) || LIQUID.test(name)) ? 1 : scale))), label: (opts && opts.label) || LABEL[name] || name }));
-  const total = parts.reduce((a, p) => { for (const k of ['kcal', 'carb', 'prot', 'fat', 'sugar', 'fiber', 'sodium']) a[k] = +((a[k] || 0) + p[k]).toFixed(1); return a; }, {});
+  const total = parts.reduce((a, p) => { for (const k of SUM_KEYS) if (p[k] != null) a[k] = +((a[k] || 0) + p[k]).toFixed(2); return a; }, {});
   total.kcal = Math.round(total.kcal);
   return { id: recipe.id, title: recipe.title, parts, total, steps: recipe.steps, prep: recipe.prep, tags: recipe.tags || [], scale };
 }
@@ -210,7 +216,7 @@ export const RETORT = [
 
 export function retortItem(r) {
   const parts = r.ing.map(([n, g]) => nut(n, g));
-  const t = parts.reduce((a, p) => { for (const k of ['kcal', 'carb', 'prot', 'fat', 'sugar', 'fiber', 'sodium']) a[k] = +((a[k] || 0) + p[k]).toFixed(1); return a; }, {});
+  const t = parts.reduce((a, p) => { for (const k of SUM_KEYS) if (p[k] != null) a[k] = +((a[k] || 0) + p[k]).toFixed(2); return a; }, {});
   t.kcal = Math.round(t.kcal);
   return { id: r.id, name: r.name, role: r.role, ...t, grams: parts.reduce((a, p) => a + p.grams, 0) };
 }
