@@ -9,6 +9,7 @@
 |---|---|
 | `index.html`, `js/`, `css/`, `sw.js`, `manifest.webmanifest` | PWA 앱 본체 (빌드 없이 그대로 배포) |
 | `data/foods.json` | 식약처 통합DB 기반 칼로리 DB (28,522개, 음식·원재료·가공식품) |
+| `js/plans.js` | 추천 식단 라이브러리 (아침 5종, 도시락 24종, 레토르트 13종) |
 | `data/menu/latest.json` | 진선미관 주간 식단 (GitHub Actions가 매일 갱신) |
 | `tools/scrape_menu.py` | 식단 스크래퍼 |
 | `tools/fetch_mfds.py`, `tools/build_fooddb.py` | 칼로리 DB 수집·변환 |

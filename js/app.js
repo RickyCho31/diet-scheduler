@@ -60,7 +60,7 @@ function ctx(iso) {
   return { day, p, w, tg, ...mb, total: dayTotal(day) };
 }
 
-function recentLunchboxIds(iso, n = 3) {
+function recentLunchboxIds(iso, n = 5) {
   const ids = [];
   for (let i = 1; i <= n; i++) {
     const d = store.state.days[addDays(iso, -i)];
