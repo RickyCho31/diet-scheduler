@@ -1,6 +1,6 @@
 // Diet Scheduler — UI
 import { store, MEALS, MEAL_NAME, addDays, localDate } from './store.js';
-import { targets, recommended, weightTrend, weightAvg, mealBudgets, decideCafeteria, snackPlan, sumItems, mealTotal, dayTotal, PORTIONS, PORTION_LABEL, NUTRS, MICROS, NUTR_LABEL, NUTR_UNIT, UPPER_LIMIT, SUPPLEMENTS, supplementFor, pct } from './nutrition.js';
+import { targets, recommended, weightTrend, weightAvg, mealBudgets, decideCafeteria, snackPlan, sumItems, mealTotal, dayTotal, PORTIONS, PORTION_LABEL, NUTRS, MICROS, ALL_KEYS, NUTR_LABEL, NUTR_UNIT, UPPER_LIMIT, SUPPLEMENTS, supplementFor, pct } from './nutrition.js';
 import { BREAKFAST, LUNCHBOX, RETORT, breakfastsFor, lunchboxesFor, retortsFor, buildRecipe, scaleFor, retortItem, retortCombo, pickLunchbox, findRecipe } from './plans.js';
 import { loadFoods, foodsReady, searchFoods, nutrientsFor, matchMenuItem, F } from './foods.js';
 import { loadMenu, menuFor, cafeteriaItems, menuData, weekStarting } from './menu.js';
@@ -11,7 +11,8 @@ const r1 = (x) => (x == null ? '-' : Math.round(x * 10) / 10);
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 const fmtDate = (iso) => { const d = new Date(iso + 'T12:00:00'); return `${d.getMonth() + 1}/${d.getDate()} (${DOW[d.getDay()]})`; };
 
-const ui = { tab: 'today', date: store.today(), panel: null, draft: null, menuWeek: null, foodsLoaded: false, menuLoaded: false };
+const ui = { tab: 'today', date: store.today(), panel: null, draft: null, menuWeek: null, foodsLoaded: false, menuLoaded: false, range: { w: 30, k: 14, p: 14 } };
+try { Object.assign(ui.range, JSON.parse(localStorage.getItem('ds.range') || '{}')); } catch {}
 
 /* ---------------- 부트 ---------------- */
 async function boot() {
@@ -24,7 +25,8 @@ async function boot() {
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
   }
   loadMenu().then(() => { ui.menuLoaded = true; render(); });
-  loadFoods().then(() => { ui.foodsLoaded = true; render(); }).catch(() => toast('음식 DB를 불러오지 못했습니다'));
+  backfillMicros();
+  loadFoods().then(() => { ui.foodsLoaded = true; const n = backfillMicros(); if (n) toast(`지난 기록 ${n}건에 미량영양소를 보정했습니다`); render(); }).catch(() => toast('음식 DB를 불러오지 못했습니다'));
   document.addEventListener('visibilitychange', () => { if (!document.hidden && ui.date !== store.today()) { ui.date = store.today(); render(); } });
 }
 
@@ -81,6 +83,37 @@ function plannedRecipe(iso, meal, budgetKcal) {
     day.plan[meal] = rec.id; store.save();   // 한 번 정해진 계획은 고정 (내일 화면과 오늘 화면이 같도록)
   }
   return buildRecipe(rec, scaleFor(rec, budgetKcal));
+}
+
+/** 예전 기록(미량영양소 없이 저장된 항목)을 현재 DB/레시피 값으로 보정 */
+function backfillMicros() {
+  let changed = 0;
+  for (const d of Object.values(store.state.days)) {
+    for (const m of MEALS) {
+      const log = d.meals?.[m]; if (!log || !log.items) continue;
+      if (log.source === 'plan' && log.recipeId && log.items[0] && log.items[0].ca == null) {
+        const r = findRecipe(log.recipeId);
+        if (r) { const rec = buildRecipe(r, log.scale || 1); Object.assign(log.items[0], rec.total, { name: rec.title, grams: rec.parts.reduce((a, p) => a + p.grams, 0) }); changed++; }
+      }
+      for (const it of log.items) {
+        if (it.ca != null) continue;
+        if (it.rid) { const rr = RETORT.find((x) => x.id === it.rid); if (rr) { Object.assign(it, retortItem(rr), { rid: it.rid, portion: it.portion, unit: 'g' }); changed++; } continue; }
+        if (!foodsReady()) continue;
+        let n = null;
+        if (it.est && it.match !== undefined) {           // 진선미 메뉴: 이름으로 재매칭
+          const mm = matchMenuItem(it.name);
+          if (mm.match) { const k = (it.grams || mm.grams) / mm.grams; n = {}; for (const key of MICROS) n[key] = mm[key] == null ? null : mm[key] * k; }
+        } else if (it.src === 'db' || it.row) {          // 외식/검색 항목: 같은 이름의 DB 행
+          const rows = searchFoods(String(it.name).replace(/\s*\(.*\)$/, ''), 20);
+          const row = rows.find((r) => (r[F.name] + (r[F.brand] ? ` (${r[F.brand]})` : '')) === it.name) || rows[0];
+          if (row) { n = nutrientsFor(row, it.grams); delete it.row; }
+        }
+        if (n) { for (const key of MICROS) if (n[key] != null) it[key] = Math.round(n[key] * 100) / 100; if (it.ca == null) it.ca = 0; changed++; }
+      }
+    }
+  }
+  if (changed) store.save();
+  return changed;
 }
 
 /* ---------------- 렌더 ---------------- */
@@ -341,8 +374,6 @@ function viewStats() {
   const tg = ctx(store.today()).tg;
   let h = `<h1>기록</h1>`;
   // 체중 (30일)
-  const wdays = lastNDays(30);
-  const wpts = wdays.map((iso, i) => ({ i, iso, kg: store.state.weights[iso] })).filter((p) => p.kg != null);
   {
     const latest = store.latestWeight(store.today());
     const a7 = weightAvg(store.state.weights, store.today(), 7);
@@ -363,47 +394,84 @@ function viewStats() {
       <span>7일 평균</span><b>${a7 ? a7.avg + ' kg (' + a7.n + '회)' : '-'}${a7 && a7prev ? ` <span class="chip ${a7.avg <= a7prev.avg ? 'ok' : 'warn'}">지난주 대비 ${(a7.avg - a7prev.avg > 0 ? '+' : '') + (a7.avg - a7prev.avg).toFixed(2)}</span>` : ''}</b>
       <span>2주 추세</span><b>${tr ? (tr.perWeek > 0 ? '+' : '') + tr.perWeek + ' kg/주' : '-'}</b></div>${paceMsg}</div>`;
   }
-  if (wpts.length >= 2) {
-    const W = 600, H = 160, pad = 28;
-    const min = Math.min(...wpts.map((p) => p.kg)) - 0.5, max = Math.max(...wpts.map((p) => p.kg)) + 0.5;
-    const x = (i) => pad + (i / 29) * (W - pad * 2), y = (kg) => H - pad - ((kg - min) / (max - min)) * (H - pad * 2);
-    const path = wpts.map((p, k) => `${k ? 'L' : 'M'}${x(p.i).toFixed(1)},${y(p.kg).toFixed(1)}`).join(' ');
-    const first = wpts[0], last = wpts[wpts.length - 1];
-    const maPts = wdays.map((iso, i) => { const a = weightAvg(store.state.weights, iso, 7); return a && store.state.weights[iso] != null ? `${x(i).toFixed(1)},${y(a.avg).toFixed(1)}` : null; }).filter(Boolean);
-    const maPath = maPts.map((pt, k) => (k ? 'L' : 'M') + pt).join(' ');
-    h += `<div class="card"><div class="row between"><h2 class="tight">체중 30일</h2><span class="chip ${last.kg <= first.kg ? 'ok' : 'warn'}">${(last.kg - first.kg > 0 ? '+' : '') + (last.kg - first.kg).toFixed(1)} kg</span></div>
-      <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="체중 추이"><line x1="${pad}" x2="${W - pad}" y1="${H - pad}" y2="${H - pad}" stroke="var(--line)"/><path d="${path}" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linejoin="round" opacity="0.55"/><path d="${maPath}" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-linejoin="round"/>
-      ${wpts.map((p) => `<circle cx="${x(p.i).toFixed(1)}" cy="${y(p.kg).toFixed(1)}" r="4" fill="var(--brand)" stroke="var(--card)" stroke-width="2"><title>${p.iso} ${p.kg}kg</title></circle>`).join('')}
-      <text x="${x(first.i)}" y="${y(first.kg) - 8}" font-size="11" fill="var(--muted)" text-anchor="middle">${first.kg}</text><text x="${x(last.i)}" y="${y(last.kg) - 8}" font-size="11" fill="var(--ink)" text-anchor="middle" font-weight="600">${last.kg}</text></svg><div class="legend"><span><i style="background:var(--brand);opacity:.55"></i>일일 체중</span><span><i style="background:var(--ink);height:2px;vertical-align:2px"></i>7일 이동평균</span></div></div>`;
+  // ---- 기간 선택 차트 (체중·칼로리·단백질) ----
+  const RANGES = [[7, '7일'], [14, '14일'], [30, '1달'], [365, '1년'], [0, '전체']];
+  const firstRecord = () => { const ks = [...Object.keys(store.state.weights), ...Object.keys(store.state.days).filter((k) => MEALS.some((m) => store.state.days[k].meals?.[m]?.source))].sort(); return ks[0] || store.today(); };
+  const rangeDays = (d) => d || Math.max(14, Math.round((new Date(store.today() + 'T12:00:00') - new Date(firstRecord() + 'T12:00:00')) / 86400000) + 1);
+  const rangeSeg = (chart) => `<div class="row between" style="margin-top:8px"><span class="muted small">기간</span><span class="seg sm">${RANGES.map(([d, l]) => `<button class="${(ui.range[chart] ?? 14) === d ? 'on' : ''}" data-action="range" data-chart="${chart}" data-days="${d}">${l}</button>`).join('')}</span></div>`;
+  const totalsOf = (iso) => { const d = store.state.days[iso]; if (!d || !MEALS.some((m) => d.meals?.[m]?.source)) return null; return dayTotal(d, store.state.profile); };
+  const bucketOf = (n) => (n <= 31 ? 1 : n <= 400 ? 7 : 30);
+  const fmtTick = (iso, b) => (b >= 30 ? iso.slice(2, 7).replace('-', '/') : iso.slice(5).replace('-', '/'));
+
+  // 체중: 점+선, 이동평균선
+  {
+    const nDays = rangeDays(ui.range.w ?? 30);
+    const dayList = lastNDays(nDays);
+    const pts = dayList.map((iso, i) => ({ i, iso, kg: store.state.weights[iso] })).filter((p) => p.kg != null);
+    const W = 600, H = 180, padL = 44, padR = 16, padT = 16, padB = 26;
+    let body = '', chip = '';
+    if (!pts.length) body = `<div class="muted small" style="margin:8px 0">이 기간에 체중 기록이 없습니다. 오늘 탭에서 체중을 입력하면 점이 찍힙니다.</div>`;
+    else {
+      const lo = Math.min(...pts.map((p) => p.kg)), hi = Math.max(...pts.map((p) => p.kg));
+      const min = Math.floor((lo - 0.5) * 2) / 2, max = Math.ceil((hi + 0.5) * 2) / 2;
+      const x = (i) => padL + (i / Math.max(1, nDays - 1)) * (W - padL - padR), y = (kg) => H - padB - ((kg - min) / (max - min)) * (H - padB - padT);
+      const path = pts.map((p, k) => `${k ? 'L' : 'M'}${x(p.i).toFixed(1)},${y(p.kg).toFixed(1)}`).join(' ');
+      const maWin = nDays <= 31 ? 7 : nDays <= 400 ? 28 : 90;
+      const maPath = pts.map((p, k) => { const a = weightAvg(store.state.weights, p.iso, maWin); return `${k ? 'L' : 'M'}${x(p.i).toFixed(1)},${y(a.avg).toFixed(1)}`; }).join(' ');
+      const showDots = pts.length <= 60;
+      const first = pts[0], last = pts[pts.length - 1];
+      const every = Math.max(1, Math.ceil(nDays / 6));
+      const grid = [min, (min + max) / 2, max];
+      chip = pts.length >= 2 ? `<span class="chip ${last.kg <= first.kg ? 'ok' : 'warn'}">${(last.kg - first.kg > 0 ? '+' : '') + (last.kg - first.kg).toFixed(1)} kg</span>` : '';
+      body = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="체중 추이">
+        ${grid.map((g) => `<line x1="${padL}" x2="${W - padR}" y1="${y(g).toFixed(1)}" y2="${y(g).toFixed(1)}" stroke="var(--line)"/><text x="${padL - 6}" y="${(y(g) + 4).toFixed(1)}" font-size="10" fill="var(--muted)" text-anchor="end">${g}</text>`).join('')}
+        <path d="${path}" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linejoin="round" opacity="0.5"/>
+        <path d="${maPath}" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-linejoin="round"/>
+        ${showDots ? pts.map((p) => `<circle cx="${x(p.i).toFixed(1)}" cy="${y(p.kg).toFixed(1)}" r="4" fill="var(--brand)" stroke="var(--card)" stroke-width="2"><title>${p.iso} ${p.kg}kg</title></circle>`).join('') : ''}
+        <text x="${x(last.i).toFixed(1)}" y="${(y(last.kg) - 9).toFixed(1)}" font-size="11" fill="var(--ink)" text-anchor="${last.i > nDays * 0.85 ? 'end' : 'middle'}" font-weight="600">${last.kg} kg</text>
+        ${dayList.map((iso, i) => (i % every === (nDays - 1) % every) ? `<text x="${x(i).toFixed(1)}" y="${H - 8}" font-size="10" fill="var(--muted)" text-anchor="middle">${fmtTick(iso, nDays > 400 ? 30 : 1)}</text>` : '').join('')}
+        </svg><div class="legend"><span><i style="background:var(--brand);opacity:.5"></i>일일 체중</span><span><i style="background:var(--ink);height:2px;vertical-align:2px"></i>${maWin}일 이동평균</span></div>`;
+    }
+    h += `<div class="card"><div class="row between"><h2 class="tight">체중 추이</h2>${chip}</div>${body}${rangeSeg('w')}</div>`;
   }
-  // 14일 막대 + 7일 이동평균선 (칼로리·단백질)
-  const days14 = lastNDays(14);
-  const rows14 = days14.map((iso) => { const c = ctx(iso); return { iso, t: c.total, has: MEALS.some((m) => c.day.meals[m]?.source) }; });
-  const ma7 = (list, getter, hasFn) => list.map((_, i) => { const win = list.slice(Math.max(0, i - 6), i + 1).filter(hasFn); return win.length ? win.reduce((a, r) => a + getter(r), 0) / win.length : null; });
-  const barChart = (title, getter, target, unit, color, sub) => {
-    const W = 600, H = 190, padL = 36, padR = 16, padT = 18, padB = 26, n = rows14.length;
-    const vals = rows14.map((r) => (r.has ? getter(r) : 0));
-    const ma = ma7(rows14, getter, (r) => r.has);
+
+  // 칼로리·단백질: 막대 + 이동평균선 (기간에 따라 일/주/월 단위로 묶음)
+  const barChart = (chart, title, key, target, color, unitLabel) => {
+    const nDays = rangeDays(ui.range[chart] ?? 14);
+    const dayList = lastNDays(nDays);
+    const daily = dayList.map((iso) => { const t = totalsOf(iso); return { iso, v: t ? t[key] : null }; });
+    const b = bucketOf(nDays);
+    const buckets = [];
+    for (let e = daily.length; e > 0; e -= b) { const sl = daily.slice(Math.max(0, e - b), e); const vs = sl.map((z) => z.v).filter((v) => v != null); buckets.unshift({ iso: sl[0].iso, end: sl[sl.length - 1].iso, v: vs.length ? vs.reduce((a, c) => a + c, 0) / vs.length : null, n: vs.length }); }
+    const win = b === 1 ? 7 : b === 7 ? 4 : 3;
+    const ma = buckets.map((_, i) => { const w = buckets.slice(Math.max(0, i - win + 1), i + 1).filter((z) => z.v != null); return w.length ? w.reduce((a, z) => a + z.v, 0) / w.length : null; });
+    const n = buckets.length;
+    const W = 600, H = 190, padL = 36, padR = 16, padT = 18, padB = 26;
+    const vals = buckets.map((z) => z.v ?? 0);
     const maxV = Math.max(target * 1.2, ...vals, ...ma.filter((v) => v != null)) || 1;
     const y = (v) => H - padB - (v / maxV) * (H - padB - padT);
-    const slot = (W - padL - padR) / n, bw = Math.min(30, slot * 0.62);
+    const slot = (W - padL - padR) / n, bw = Math.max(2, Math.min(30, slot * 0.62));
     const x = (i) => padL + slot * i + (slot - bw) / 2;
-    const linePts = ma.map((v, i) => (v == null ? null : `${(x(i) + bw / 2).toFixed(1)},${y(v).toFixed(1)}`));
     let d = '', pen = false;
-    linePts.forEach((pt) => { if (!pt) { pen = false; return; } d += (pen ? ' L' : ' M') + pt; pen = true; });
-    const last = ma[n - 1];
-    return `<div class="card"><h2>${title} <span class="muted small">${sub}</span></h2>
-      <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${title}">
-        <line x1="${padL}" x2="${W - padR}" y1="${y(target)}" y2="${y(target)}" stroke="var(--muted)" stroke-dasharray="4 4"/><text x="${W - padR}" y="${y(target) - 4}" font-size="11" fill="var(--muted)" text-anchor="end">목표 ${target}</text>
-        ${rows14.map((r, i) => r.has ? `<rect x="${x(i).toFixed(1)}" y="${y(vals[i]).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0, H - padB - y(vals[i])).toFixed(1)}" rx="3" fill="${UPPER_LIMIT.has(unit) ? color : (vals[i] > target * 1.05 ? 'var(--bad)' : color)}" opacity="0.85"><title>${r.iso}: ${Math.round(vals[i])}</title></rect>` : '').join('')}
+    ma.forEach((v, i) => { if (v == null) { pen = false; return; } d += (pen ? ' L' : ' M') + `${(x(i) + bw / 2).toFixed(1)},${y(v).toFixed(1)}`; pen = true; });
+    const lastMa = ma[n - 1];
+    const every = Math.max(1, Math.ceil(n / 7));
+    const barLabel = b === 1 ? '일일' : b === 7 ? '주 평균' : '월 평균';
+    const maLabel = b === 1 ? '7일 이동평균' : b === 7 ? '4주 이동평균' : '3개월 이동평균';
+    const hasAny = buckets.some((z) => z.v != null);
+    return `<div class="card"><h2>${title} <span class="muted small">${unitLabel}</span></h2>
+      ${hasAny ? `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${title}">
+        <line x1="${padL}" x2="${W - padR}" y1="${y(target).toFixed(1)}" y2="${y(target).toFixed(1)}" stroke="var(--muted)" stroke-dasharray="4 4"/><text x="${W - padR}" y="${(y(target) - 4).toFixed(1)}" font-size="11" fill="var(--muted)" text-anchor="end">목표 ${target}</text>
+        ${buckets.map((z, i) => z.v != null ? `<rect x="${x(i).toFixed(1)}" y="${y(z.v).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0, H - padB - y(z.v)).toFixed(1)}" rx="${Math.min(3, bw / 2)}" fill="${key === 'kcal' && z.v > target * 1.05 ? 'var(--bad)' : color}" opacity="0.85"><title>${z.iso}${b > 1 ? '~' + z.end : ''}: ${Math.round(z.v)}${b > 1 ? ' (' + z.n + '일 평균)' : ''}</title></rect>` : '').join('')}
         <path d="${d.trim()}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
-        ${last != null ? `<text x="${(x(n - 1) + bw / 2).toFixed(1)}" y="${(y(last) - 6).toFixed(1)}" font-size="11" fill="var(--ink)" text-anchor="middle" font-weight="600">${Math.round(last)}</text>` : ''}
-        ${rows14.map((r, i) => (i % 2 === (n - 1) % 2) ? `<text x="${(x(i) + bw / 2).toFixed(1)}" y="${H - 8}" font-size="10" fill="var(--muted)" text-anchor="middle">${r.iso.slice(5).replace('-', '/')}</text>` : '').join('')}
+        ${lastMa != null ? `<text x="${(x(n - 1) + bw / 2).toFixed(1)}" y="${(y(lastMa) - 6).toFixed(1)}" font-size="11" fill="var(--ink)" text-anchor="${n > 3 ? 'end' : 'middle'}" font-weight="600">${Math.round(lastMa)}</text>` : ''}
+        ${buckets.map((z, i) => (i % every === (n - 1) % every) ? `<text x="${(x(i) + bw / 2).toFixed(1)}" y="${H - 8}" font-size="10" fill="var(--muted)" text-anchor="middle">${fmtTick(z.iso, b)}</text>` : '').join('')}
         <line x1="${padL}" x2="${W - padR}" y1="${H - padB}" y2="${H - padB}" stroke="var(--line)"/></svg>
-      <div class="legend"><span><i style="background:${color}"></i>일일</span><span><i style="background:var(--ink);height:2px;vertical-align:2px"></i>7일 이동평균</span><span><i style="border-top:2px dashed var(--muted);height:0;vertical-align:2px"></i>목표</span></div></div>`;
+      <div class="legend"><span><i style="background:${color}"></i>${barLabel}</span><span><i style="background:var(--ink);height:2px;vertical-align:2px"></i>${maLabel}</span><span><i style="border-top:2px dashed var(--muted);height:0;vertical-align:2px"></i>목표</span></div>` : `<div class="muted small" style="margin:8px 0">이 기간에 식사 기록이 없습니다.</div>`}
+      ${rangeSeg(chart)}</div>`;
   };
-  h += barChart('칼로리 14일', (r) => r.t.kcal, tg.kcal, 'kcal', 'var(--brand)', `7일 평균 ${avg('kcal')} / 목표 ${tg.kcal} kcal`);
-  h += barChart('단백질 14일', (r) => r.t.prot, tg.prot, 'g', 'var(--accent)', `7일 평균 ${avg('prot')} / 목표 ${tg.prot} g`);
+  h += barChart('k', '칼로리', 'kcal', tg.kcal, 'var(--brand)', `7일 평균 ${avg('kcal')} / 목표 ${tg.kcal} kcal`);
+  h += barChart('p', '단백질', 'prot', tg.prot, 'var(--accent)', `7일 평균 ${avg('prot')} / 목표 ${tg.prot} g`);
   // 산책 & 준수
   const walkCount = rows.reduce((a, r) => a + (r.walks.l ? 1 : 0) + (r.walks.d ? 1 : 0), 0);
   h += `<div class="card"><div class="row between"><h2 class="tight">식후 산책 7일</h2><span class="chip ${walkCount >= 10 ? 'ok' : walkCount >= 6 ? 'warn' : ''}">${walkCount} / 14</span></div>
@@ -530,6 +598,7 @@ $('#view').addEventListener('click', (e) => {
     case 'add-food': { const row = ui.draft.results[+el.dataset.i]; const n = nutrientsFor(row); ui.draft.items.push({ ...n, portion: 1, row }); ui.draft.results = []; ui.draft.query = ''; render(); refocus(); break; }
     case 'remove': ui.draft.items.splice(+el.dataset.idx, 1); render(); break;
     case 'menu-week': ui.menuWeek = el.dataset.w; render(); break;
+    case 'range': ui.range[el.dataset.chart] = +el.dataset.days; try { localStorage.setItem('ds.range', JSON.stringify(ui.range)); } catch {} render(); break;
     case 'goto': ui.date = el.dataset.date; ui.tab = 'today'; ui.panel = null; render(); break;
     case 'export': exportJSON(); break;
     case 'import': importJSON(); break;

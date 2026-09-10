@@ -52,6 +52,7 @@ button, .btn { font: inherit; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 .seg button { border: 0; background: var(--card); color: var(--ink); padding: 6px 9px; font-size: 13px; min-width: 38px; }
 .seg button.on { background: var(--brand); color: var(--brand-ink); }
+.seg.sm button { padding: 3px 8px; font-size: 12px; min-width: 0; }
 .stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 .stepper button { border: 0; background: var(--card); color: var(--ink); width: 34px; height: 32px; font-size: 18px; }
 .stepper span { min-width: 44px; text-align: center; font-weight: 600; font-size: 14px; }
