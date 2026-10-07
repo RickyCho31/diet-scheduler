@@ -1,11 +1,11 @@
 {
- "updated_at": "2026-10-06T22:09:37",
+ "updated_at": "2026-10-07T22:09:38",
  "weeks": [
   {
    "week_start": "2026-10-05",
    "week_end": "2026-10-11",
    "source": "https://www.ewha.ac.kr/ewha/life/restaurant.do?mode=view&articleNo=903",
-   "fetched_at": "2026-10-06T22:09:35",
+   "fetched_at": "2026-10-07T22:09:35",
    "days": [
     {
      "date": "2026-10-05",
@@ -118,7 +118,7 @@
    "week_start": "2026-10-12",
    "week_end": "2026-10-18",
    "source": "https://www.ewha.ac.kr/ewha/life/restaurant.do?mode=view&articleNo=903",
-   "fetched_at": "2026-10-06T22:09:37",
+   "fetched_at": "2026-10-07T22:09:38",
    "days": [
     {
      "date": "2026-10-12",
