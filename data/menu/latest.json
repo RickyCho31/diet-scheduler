@@ -1,5 +1,5 @@
 {
- "updated_at": "2026-10-24T23:59:41",
+ "updated_at": "2026-10-25T23:48:45",
  "weeks": [
   {
    "week_start": "2026-10-19",
@@ -150,7 +150,7 @@
    "week_start": "2026-10-26",
    "week_end": "2026-11-01",
    "source": "https://www.ewha.ac.kr/ewha/life/restaurant.do?mode=view&articleNo=903",
-   "fetched_at": "2026-10-24T23:59:41",
+   "fetched_at": "2026-10-25T23:48:43",
    "days": [
     {
      "date": "2026-10-26",
