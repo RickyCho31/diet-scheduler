@@ -1,5 +1,5 @@
 {
- "updated_at": "2026-11-08T01:05:27",
+ "updated_at": "2026-11-09T01:25:15",
  "weeks": [
   {
    "week_start": "2026-11-02",
@@ -150,7 +150,7 @@
    "week_start": "2026-11-09",
    "week_end": "2026-11-15",
    "source": "https://www.ewha.ac.kr/ewha/life/restaurant.do?mode=view&articleNo=903",
-   "fetched_at": "2026-11-08T01:05:25",
+   "fetched_at": "2026-11-09T01:25:14",
    "days": [
     {
      "date": "2026-11-09",
@@ -204,7 +204,7 @@
      "breakfast": [],
      "lunch": [
       "잡곡밥",
-      "순살동태찌개",
+      "동태찌개",
       "간장닭찜",
       "교자만두튀김",
       "궁채절임",
